@@ -188,8 +188,6 @@
         });
         
         oToFile.on('open', function(fd) {
-
-
             oToFile.on('error', function(oError) {
                 bError = true;
                 syslog.error({action: 'KnoxedUp.getFile.write.error', message: 'failed to open file for writing: (' + sToFile + ')', 
@@ -524,7 +522,7 @@
                                 syslog.warn(oLog);
                                 this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
                             }
-                        } else if(oResponse.statusCode > 399) {
+                        } else if(oResponse.statusCode > 400) {
                             oLog.error = new Error('S3 Error Code ' + oResponse.statusCode);
                             fDone(fCallback, oLog.error);
                         } else {
