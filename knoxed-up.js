@@ -177,7 +177,7 @@
     };
 
     KnoxedUp.prototype.getFile = function (sFilename, sToFile, sType, fCallback) {
-        syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
+        //syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
 
         var iStart  = syslog.timeStart();
         var bError  = false;
@@ -198,13 +198,13 @@
             oToFile.on('close', function() {
                 bClosed = true;
                 if (!bError) {
-                    syslog.debug({action: 'KnoxedUp.getFile.write.done', output: sToFile});
+                    //syslog.debug({action: 'KnoxedUp.getFile.write.done', output: sToFile});
                     fCallback(null, sToFile);
                 }
             });
 
             var oRequest = this._get(sFilename, sType, {}, function(oError, oResponse, sData, iRetries) {
-                syslog.debug({action: 'KnoxedUp.getFile.got'});
+                //syslog.debug({action: 'KnoxedUp.getFile.got'});
                 if (oError) {
                     syslog.error({action: 'KnoxedUp.getFile.error', error: oError});
                     bError = true;
@@ -213,20 +213,20 @@
                     fs.exists(sToFile, function(bExists) {
                         if (bExists) {
                             fs.unlink(sToFile, function() {
-                                syslog.debug({action: 'KnoxedUp.getFile.unlink.done'});
+                                //syslog.debug({action: 'KnoxedUp.getFile.unlink.done'});
                                 fCallback(oError);
                             });
                         } else {
-                            syslog.debug({action: 'KnoxedUp.getFile.done'});
+                            //syslog.debug({action: 'KnoxedUp.getFile.done'});
                             fCallback(oError);
                         }
                     });
                 } else if (!bClosed) {
-                    syslog.debug({action: 'KnoxedUp.getFile.response.end'});
+                    //syslog.debug({action: 'KnoxedUp.getFile.response.end'});
 
                     // Weird case where file may be incomplete
                     if (iRetries) {
-                        syslog.debug({action: 'KnoxedUp.getFile.response.end.retried'});
+                        //syslog.debug({action: 'KnoxedUp.getFile.response.end.retried'});
                         bError = true;
                         oToFile.end();
 
@@ -244,7 +244,7 @@
             });
 
             oRequest.on('response', function(oResponse) {
-                syslog.debug({action: 'KnoxedUp.getFile.response'});
+                //syslog.debug({action: 'KnoxedUp.getFile.response'});
 
                 oResponse.on('data', function(sChunk) {
                     if (!bError) {
@@ -253,7 +253,7 @@
                 });
 
                 oResponse.on('end', function() {
-                    syslog.debug({action: 'KnoxedUp.getFile.response.end'});
+                    //syslog.debug({action: 'KnoxedUp.getFile.response.end'});
                     oToFile.end();
                 });
             });
@@ -271,7 +271,7 @@
     };
 
     KnoxedUp.prototype._setSizeAndHashHeaders = function (sFile, oHeaders, fCallback) {
-        syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders', file: sFile, headers: oHeaders});
+        //syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders', file: sFile, headers: oHeaders});
         async.parallel({
             stat: function(fAsyncCallback) { fs.stat(            sFile, fAsyncCallback); },
             md5:  function(fAsyncCallback) { fsX.md5FileToBase64(sFile, fAsyncCallback); },
@@ -285,7 +285,7 @@
                 oHeaders['Content-MD5']     = oResults.md5;
                 oHeaders['x-amz-meta-sha1'] = oResults.sha1;
 
-                syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders.done', file: sFile, headers: oHeaders});
+                //syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders.done', file: sFile, headers: oHeaders});
                 fCallback(null, oHeaders);
             }
         });
@@ -567,7 +567,7 @@
                 syslog.error({action: 'KnoxedUp.getHeaders.error', error: oError});
                 fCallback(oError);
             } else {
-                syslog.debug({action: 'KnoxedUp.getHeaders.done', headers: oResponse.headers});
+                //syslog.debug({action: 'KnoxedUp.getHeaders.done', headers: oResponse.headers});
                 fCallback(null, oResponse.headers);
             }
         }.bind(this));
@@ -688,7 +688,7 @@
                     syslog.error({action: 'KnoxedUp.copyFileToBucket.error', error:  oError});
                     fCallback(oError);
                 } else {
-                    syslog.debug({action: 'KnoxedUp.copyFileToBucket.done'});
+                    //syslog.debug({action: 'KnoxedUp.copyFileToBucket.done'});
                     fCallback(null, sData);
                 }
             }.bind(this));
@@ -798,7 +798,7 @@
 
         var sTempFile  = fsX.getTmpSync() + sFile.split('/').pop();
 
-        syslog.debug({action: 'KnoxedUp.toTemp', file: sFile, type: sType, extension: sExtension, temp: sTempFile});
+        //syslog.debug({action: 'KnoxedUp.toTemp', file: sFile, type: sType, extension: sExtension, temp: sTempFile});
 
         if (KnoxedUp.isLocal() && this._localFileExists(sFile)) {
             this._fromTemp(this.getLocalPath(sFile), sCheckHash, sExtension, fCallback);
@@ -822,7 +822,7 @@
      * @private
      */
     KnoxedUp.prototype._fromTemp = function(sTempFile, sCheckHash, sExtension, fCallback) {
-        syslog.debug({action: 'KnoxedUp._fromTemp', file: sTempFile});
+        //syslog.debug({action: 'KnoxedUp._fromTemp', file: sTempFile});
         var iStart = syslog.timeStart();
 
         sExtension = KnoxedUp._dotExtension(sExtension);
@@ -866,7 +866,7 @@
     KnoxedUp.prototype._getCachedFile = function(sHash, sExtension, fCallback) {
         return fCallback(null, null);
 
-        syslog.debug({action: 'KnoxedUp._getCachedFile', hash: sHash, extension: sExtension});
+        //syslog.debug({action: 'KnoxedUp._getCachedFile', hash: sHash, extension: sExtension});
 
         sExtension = KnoxedUp._dotExtension(sExtension);
 
@@ -878,7 +878,7 @@
                     if (oHashError) {
                         fCallback(oHashError);
                     } else if (sHash == sFileHash) {
-                        syslog.debug({action: 'KnoxedUp._getCachedFile.found', file: sDestination});
+                        //syslog.debug({action: 'KnoxedUp._getCachedFile.found', file: sDestination});
                         fCallback(null, sCachedFile, sFileHash);
                     } else {
                         fCallback(null, null);
@@ -899,7 +899,7 @@
     KnoxedUp.prototype._cacheFile = function(sFile, fCallback) {
         return fCallback(null);
 
-        syslog.debug({action: 'KnoxedUp._cacheFile', file: sFile});
+        //syslog.debug({action: 'KnoxedUp._cacheFile', file: sFile});
         var iStart = syslog.timeStart();
 
         fsX.mkdirP(KnoxedUp._getTmpCache(), 0777, function(oError, sPath) {
@@ -930,7 +930,7 @@
      * @private
      */
     KnoxedUp.prototype._toTemp = function(sTempFile, sFile, sType, sCheckHash, sExtension, fCallback) {
-        syslog.debug({action: 'KnoxedUp._toTemp', file: sTempFile, s3: sFile, type: sType});
+        //syslog.debug({action: 'KnoxedUp._toTemp', file: sTempFile, s3: sFile, type: sType});
         var iStart = syslog.timeStart();
 
         sExtension = KnoxedUp._dotExtension(sExtension);
