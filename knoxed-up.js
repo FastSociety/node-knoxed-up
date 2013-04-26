@@ -98,8 +98,8 @@
             }
 
             if (oResponse.statusCode == 500) {
-                oLog.action += '.request.hang_up.retry';
-                oLog.error = new Error('S3 Error Code ' + oResponse.statusCode);
+                oLog.action = 'KnoxedUp._command.' + sCommand + '.request.hang_up.retry';
+                oLog.error  = new Error('S3 Error Code ' + oResponse.statusCode);
                 if (iRetries > 3) {
                     oLog.action += '.max';
                     fDone(fCallback, oLog.error);
@@ -145,7 +145,7 @@
                             }
                         }
 
-                        oLog.action += '.done';
+                        oLog.action = 'KnoxedUp._command.' + sCommand + '.done';
                         fDone(fCallback, null, oResponse, sData);
                     });
             }
@@ -190,8 +190,7 @@
         oToFile.on('open', function(fd) {
             oToFile.on('error', function(oError) {
                 bError = true;
-                syslog.error({action: 'KnoxedUp.getFile.write.error', message: 'failed to open file for writing: (' + sToFile + ')', 
-                    error: oError});
+                syslog.error({action: 'KnoxedUp.getFile.write.error', message: 'failed to open file for writing: (' + sToFile + ')', error: oError});
                 fCallback(oError);
             });
 
@@ -222,11 +221,11 @@
                         }
                     });
                 } else if (!bClosed) {
-                    //syslog.debug({action: 'KnoxedUp.getFile.response.end'});
+                    //syslog.debug({action: 'KnoxedUp.getFile.request.end'});
 
                     // Weird case where file may be incomplete
                     if (iRetries) {
-                        //syslog.debug({action: 'KnoxedUp.getFile.response.end.retried'});
+                        //syslog.debug({action: 'KnoxedUp.getFile.request.end.retried'});
                         bError = true;
                         oToFile.end();
 
@@ -937,7 +936,7 @@
 
         async.auto({
             get:             function(fAsyncCallback, oResults) { this.getFile(sFile, sTempFile, sType, fAsyncCallback) }.bind(this),
-            move:  ['get',   function(fAsyncCallback, oResults) { fsX.moveFileToHash(oResults.get, fsX.getTmpSync(), sExtension, fAsyncCallback) }],
+            move:  ['get',   function(fAsyncCallback, oResults) { fsX.moveFileToHashWithExtension(oResults.get, fsX.getTmpSync(), sExtension, fAsyncCallback) }],
             check: ['move',  function(fAsyncCallback, oResults) { this._checkHash (oResults.move.hash, sCheckHash, fAsyncCallback) }.bind(this)],
             cache: ['check', function(fAsyncCallback, oResults) { this._cacheFile(oResults.move.path, fAsyncCallback) }.bind(this)]
         }, function(oError, oResults) {
