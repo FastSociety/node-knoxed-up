@@ -12,7 +12,7 @@
     "dependencies": {
         "xml2js":           ">=0.2.0",
         "async":            ">=0.1.15",
-        "knox":             ">=0.4.1",
+        "knox":             "0.7.0",
         "fs-extended":      "git://github.com/FastSociety/node-fs-extended.git",
         "syslog-console":   "git://github.com/FastSociety/node-syslog-console.git"
     },
