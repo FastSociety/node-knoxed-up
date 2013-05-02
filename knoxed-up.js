@@ -14,6 +14,7 @@
                 key:    oConfig.AMAZON.SERVER.ID,
                 secret: oConfig.AMAZON.SERVER.SECRET,
                 bucket: oConfig.AMAZON.BUCKET,
+                secure: false,
                 port:   80
             };
 
