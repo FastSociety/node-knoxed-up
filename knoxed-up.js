@@ -66,6 +66,18 @@
             fDoneCallback(oError, oResponse, sData, iRetries);
         };
 
+        var fRetry = function(sAction, oError) {
+            if (iRetries > 3) {
+                oLog.action  = sAction + '.retry.max';
+                oLog.error   = oError;
+                fDone(fCallback, oLog.error);
+            } else {
+                oLog.action  = sAction + '.retry';
+                syslog.warn(oLog);
+                this._command(sCommand, sFilename, sType, oHeaders, fCallback, iRetries + 1);
+            }
+        }.bind(this);
+
         var oRequest     = this.Client[sCommand](sFilename, oHeaders);
         var iLengthTotal = null;
         var iLength      = 0;
@@ -73,15 +85,7 @@
 
         oRequest.on('error', function(oError) {
             if (oError.message == 'socket hang up') {
-                if (iRetries > 3) {
-                    oLog.action += '.request.hang_up.retry.max';
-                    oLog.error   = oError;
-                    fDone(fCallback, oLog.error);
-                } else {
-                    oLog.action += '.request.hang_up.retry';
-                    syslog.warn(oLog);
-                    this._command(sCommand, sFilename, sType, oHeaders, fCallback, iRetries + 1);
-                }
+                return fRetry(oLog.action + '.request.hang_up', oError);
             } else {
                 oLog.action += '.request.error';
                 oLog.error   = oError;
@@ -99,15 +103,7 @@
             }
 
             if (oResponse.statusCode == 500) {
-                oLog.action = 'KnoxedUp._command.' + sCommand + '.request.hang_up.retry';
-                oLog.error  = new Error('S3 Error Code ' + oResponse.statusCode);
-                if (iRetries > 3) {
-                    oLog.action += '.max';
-                    fDone(fCallback, oLog.error);
-                } else {
-                    syslog.warn(oLog);
-                    this._command(sCommand, sFilename, sType, oHeaders, fCallback, iRetries + 1);
-                }
+                return fRetry('KnoxedUp._command.' + sCommand + '.request.hang_up', new Error('S3 Error Code ' + oResponse.statusCode));
             } else if(oResponse.statusCode > 399) {
                 switch(oResponse.statusCode) {
                     case 404:
@@ -123,11 +119,11 @@
             } else {
                 oResponse.setEncoding(sType);
                 oResponse
-                    .on('error', function(oError){
+                    .on('error', function(oError) {
                         oLog.error = oError;
                         fDone(fCallback, oLog.error);
                     })
-                    .on('data', function(sChunk){
+                    .on('data', function(sChunk) {
                         sData   += sChunk;
                         iLength += sChunk.length;
                     })
@@ -140,8 +136,7 @@
                                 };
 
                                 if (iLength < iLengthTotal) {
-                                    oLog.error = new Error('Content Length did not match Header');
-                                    return fDone(fCallback, oLog.error);
+                                    return fRetry('KnoxedUp._command.get.response.incorrect.length', new Error('Content Length did not match Header'));
                                 }
                             }
                         }
@@ -187,7 +182,7 @@
             flags:    'w',
             encoding: sType
         });
-        
+
         oToFile.on('open', function(fd) {
             oToFile.on('error', function(oError) {
                 bError = true;
@@ -1077,7 +1072,7 @@
 
     KnoxedUp.prototype.getLocalPath = function(sFile) {
         sFile = sFile !== undefined ? sFile : '';
-        
+
         return path.join(KnoxedUp.sPath, this.oConfig.bucket, sFile);
     };
 
