@@ -1,0 +1,12 @@
+Source: node-knoxed-up
+Section: web
+Priority: extra
+Maintainer: Fastsociety Ops <ops@fastsociety.com>
+Build-Depends: debhelper (>= 8.0.0), nodejs, npm
+Standards-Version: 3.9.2
+Homepage: https://github.com/FastSociety/node-knoxed-up
+
+Package: node-knoxed-up
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, node-fs-extended, node-syslog-console
+Description: Nodejs knoxed-up module
