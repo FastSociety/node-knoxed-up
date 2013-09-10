@@ -55,12 +55,12 @@
             callback: bHasCallback
         };
 
-        var iStart = syslog.timeStart(oLog);
+        var sTimer = syslog.timeStart(oLog.action, oLog);
         var fDone  = function(fDoneCallback, oError, oResponse, sData) {
             if (oError) {
                 syslog.error(oLog);
             } else {
-                syslog.timeStop(iStart, oLog);
+                syslog.timeStop(sTimer, oLog);
             }
 
             fDoneCallback(oError, oResponse, sData, iRetries);
@@ -175,7 +175,7 @@
     KnoxedUp.prototype.getFile = function (sFilename, sToFile, sType, fCallback) {
         //syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
 
-        var iStart  = syslog.timeStart();
+        var sTimer  = syslog.timeStart('KnoxedUp.getFile');
         var bError  = false;
         var bClosed = false;
         var oToFile = fs.createWriteStream(sToFile, {
@@ -186,7 +186,7 @@
         oToFile.on('open', function(fd) {
             oToFile.on('error', function(oError) {
                 bError = true;
-                syslog.error({action: 'KnoxedUp.getFile.write.error', message: 'failed to open file for writing: (' + sToFile + ')', error: oError});
+                syslog.error({action: sTimer + '.write.error', input: sFilename, message: 'failed to open file for writing: (' + sToFile + ')', error: oError});
                 fCallback(oError);
             });
 
@@ -201,7 +201,7 @@
             var oRequest = this._get(sFilename, sType, {}, function(oError, oResponse, sData, iRetries) {
                 //syslog.debug({action: 'KnoxedUp.getFile.got'});
                 if (oError) {
-                    syslog.error({action: 'KnoxedUp.getFile.error', error: oError});
+                    syslog.error({action: sTimer + '.getFile.error', input: sFilename, error: oError});
                     bError = true;
                     oToFile.end();
 
@@ -227,10 +227,10 @@
 
                         fs.writeFile(sToFile, sData, sType, function(oWriteError) {
                             if (oWriteError) {
-                                syslog.error({action: 'KnoxedUp.getFile.writeFile.error', error: oWriteError});
+                                syslog.error({action: sTimer + '.writeFile.error', input: sFilename, error: oWriteError});
                                 fCallback(oWriteError);
                             } else {
-                                syslog.timeStop(iStart, {action: 'KnoxedUp.getFile.writeFile.done', output: sToFile});
+                                syslog.timeStop(sTimer, {input: sFilename, output: sToFile});
                                 fCallback(null, sToFile);
                             }
                         })
@@ -451,12 +451,12 @@
             callback: bHasCallback
         };
 
-        var iStart = syslog.timeStart(oLog);
+        var sTimer = syslog.timeStart(oLog.action, oLog);
         var fDone  = function(fFinishedCallback, oError, sTo) {
             if (oError) {
                 syslog.error(oLog);
             } else {
-                syslog.timeStop(iStart, oLog);
+                syslog.timeStop(sTimer, oLog);
             }
 
             fFinishedCallback(oError, sTo);
@@ -817,9 +817,7 @@
      * @private
      */
     KnoxedUp.prototype._fromTemp = function(sTempFile, sCheckHash, sExtension, fCallback) {
-        //syslog.debug({action: 'KnoxedUp._fromTemp', file: sTempFile});
-        var iStart = syslog.timeStart();
-
+        var sTimer = syslog.timeStart('KnoxedUp._fromTemp');
         sExtension = KnoxedUp._dotExtension(sExtension);
 
         async.auto({
@@ -829,10 +827,10 @@
             chmod: ['copy', function(fAsyncCallback, oResults) { fs.chmod(oResults.copy, 0777, fAsyncCallback) }]
         }, function(oError, oResults) {
             if (oError) {
-                syslog.error({action: 'KnoxedUp._fromTemp.error', error: oError});
+                syslog.error({action: sTimer + '.error', input: sTempFile, error: oError});
                 fCallback(oError);
             } else {
-                syslog.timeStop(iStart, {action: 'KnoxedUp._fromTemp.done', hash: oResults.hash, file: oResults.copy});
+                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.copy});
                 fCallback(null, oResults.copy, oResults.hash);
             }
         });
@@ -893,9 +891,7 @@
      */
     KnoxedUp.prototype._cacheFile = function(sFile, fCallback) {
         return fCallback(null);
-
-        //syslog.debug({action: 'KnoxedUp._cacheFile', file: sFile});
-        var iStart = syslog.timeStart();
+        var sTimer = syslog.timeStart('KnoxedUp._cacheFile');
 
         fsX.mkdirP(KnoxedUp._getTmpCache(), 0777, function(oError, sPath) {
             if (oError) {
@@ -906,7 +902,7 @@
                     if (oCopyError) {
                         fCallback(oCopyError);
                     } else {
-                        syslog.timeStop(iStart, {action: 'KnoxedUp._cacheFile.cached', file: sFile});
+                        syslog.timeStop(sTimer, {input: sFile, file: sFile});
                         fCallback(null);
                     }
                 });
@@ -925,9 +921,7 @@
      * @private
      */
     KnoxedUp.prototype._toTemp = function(sTempFile, sFile, sType, sCheckHash, sExtension, fCallback) {
-        //syslog.debug({action: 'KnoxedUp._toTemp', file: sTempFile, s3: sFile, type: sType});
-        var iStart = syslog.timeStart();
-
+        var sTimer = syslog.timeStart('KnoxedUp._toTemp');
         sExtension = KnoxedUp._dotExtension(sExtension);
 
         async.auto({
@@ -937,10 +931,10 @@
             cache: ['check', function(fAsyncCallback, oResults) { this._cacheFile(oResults.move.path, fAsyncCallback) }.bind(this)]
         }, function(oError, oResults) {
             if (oError) {
-                syslog.error({action: 'KnoxedUp._toTemp.error', error: oError, hash: sCheckHash, results: oResults});
+                syslog.error({action: sTimer + '.error', input: sTempFile, error: oError, hash: sCheckHash, results: oResults});
                 fCallback(oError);
             } else {
-                syslog.timeStop(iStart, {action: 'KnoxedUp._toTemp.done', hash: oResults.hash, file: oResults.copy});
+                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.copy});
                 fCallback(null, oResults.move.path, oResults.move.hash);
             }
         });
