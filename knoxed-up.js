@@ -84,12 +84,20 @@
         var sData        = '';
 
         oRequest.on('error', function(oError) {
-            if (oError.message == 'socket hang up') {
-                return fRetry(oLog.action + '.request.hang_up', oError);
-            } else {
-                oLog.action += '.request.error';
-                oLog.error   = oError;
-                fDone(fCallback, oLog.error);
+            switch(oError.message) {
+                case 'socket hang up':
+                    return fRetry(oLog.action + '.request.hang_up', oError);
+                    break;
+
+                case 'read ECONNRESET':
+                    return fRetry(oLog.action + '.request.connection_reset', oError);
+                    break;
+
+                default:
+                    oLog.action += '.request.error';
+                    oLog.error   = oError;
+                    return fDone(fCallback, oLog.error);
+                    break;
             }
         }.bind(this));
 
@@ -201,7 +209,7 @@
             var oRequest = this._get(sFilename, sType, {}, function(oError, oResponse, sData, iRetries) {
                 //syslog.debug({action: 'KnoxedUp.getFile.got'});
                 if (oError) {
-                    syslog.error({action: sTimer + '.getFile.error', input: sFilename, error: oError});
+                    syslog.error({action: sTimer + '.error', input: sFilename, error: oError});
                     bError = true;
                     oToFile.end();
 
