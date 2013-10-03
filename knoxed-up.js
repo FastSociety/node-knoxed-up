@@ -87,6 +87,10 @@
             if (oError) {
                 syslog.error(oLog);
             } else {
+                if (oLog.file_size) {
+                    oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
+                }
+
                 syslog.timeStop(sTimer, oLog);
             }
 
@@ -165,7 +169,7 @@
                     .on('end', function(){
                         if (sCommand == 'get') {
                             if (iLengthTotal !== null) {
-                                oLog.length = {
+                                oLog.file_size = {
                                     download: iLength,
                                     total:    iLengthTotal
                                 };
@@ -474,8 +478,8 @@
      */
     KnoxedUp.prototype.putStream = function(sFrom, sTo, oHeaders, fCallback, iRetries) {
         var bHasCallback = typeof fCallback == 'function';
-        var iRetries    = iRetries !== undefined ? iRetries : 0;
-        var fCallback   = bHasCallback ? fCallback : function() {};
+            iRetries     = iRetries !== undefined ? iRetries : 0;
+            fCallback    = bHasCallback ? fCallback : function() {};
 
         var oLog = {
             action:    'KnoxedUp.putStream',
