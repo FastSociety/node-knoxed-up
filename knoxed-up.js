@@ -55,7 +55,7 @@
             callback: bHasCallback
         };
 
-        var aTimeoutLevels = [10, 20, 30];
+        var aTimeoutLevels = [10, 20, 30, 45, 60];
         var iTimeoutIndex  = 0;
 
         var iTimeout = setInterval(function() {
@@ -76,7 +76,7 @@
 
                 // Interim Errors
                 case aTimeoutLevels.indexOf(iTimeoutIndex):
-                    syslog.error({action: 'KnoxedUp.timeSternWarning', error: new Error('We have been waiting for KnoxedUp for over ' + iTimeoutIndex + ' seconds'), oLog: oLog});
+                    syslog.warn({action: 'KnoxedUp.timeSternWarning', error: new Error('We have been waiting for KnoxedUp for over ' + iTimeoutIndex + ' seconds'), oLog: oLog});
                     break;
             }
         }, 1000);
