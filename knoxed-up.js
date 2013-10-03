@@ -67,11 +67,11 @@
                     syslog.warn({action: 'KnoxedUp.timeWarning', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog });
                     break;
 
-                // Kill It
+                
                 case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
                     syslog.error({action: 'KnoxedUp.timeFailure', error: new Error('We have been waiting for KnoxedUp for over ' + iTimeoutIndex + ' seconds'), oLog: oLog});
                     clearInterval(iTimeout);
-                    fCallback(oLog.action + ' Timeout');
+                    // fCallback(oLog.action + ' Timeout');
                     break;
 
                 // Interim Errors
