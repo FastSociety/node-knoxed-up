@@ -64,7 +64,8 @@
 
         "Multi-Speed Test" : function(test) 
         {
-            var sTimer = syslog.timeStart('AwsS3SDk.Multi-Speed-Test');
+            var iStart = Date.now();
+            var iTotalDl = 0;
             var aFiles = [
                 'f8c555e163d024c46a4fda9187c20fd184190110',
                 'f6f70304d79be804de4253af54f81ada77d856be',
@@ -88,7 +89,7 @@
 
             var aLocals = [];
             var iTotalFileSize = 0;
-            test.expect(aFiles.length * 2);
+            test.expect(aFiles.length * 3);
             // download files
             async.each(aFiles, 
                 function(sHash, fAsyncCallback) 
@@ -99,6 +100,11 @@
                     S3.getFile(sFile, sLanding, 
                         function(oError, sDestination) 
                         {
+                            test.ifError(oError, "Had Issue Downloading File To Temp");
+                            if (oError != null)
+                            {
+                                console.log(oError);
+                            }
                             aLocals.push(sDestination);
                             fs.stat(sDestination, 
                                 function (err, stat)
@@ -115,7 +121,8 @@
                 function() 
                 {
                     console.log('Downloaded!');
-
+                    iTotalDl = Date.now() - iStart;
+                    iStart = Date.now();
                     // Now Upload them
                     async.each(aLocals, 
                         function(sFile, fAsyncCallback) 
@@ -132,10 +139,11 @@
                             );
                         },  
                         function() 
-                        {
+                        {   
+                            var iTotalUp = Date.now() - iStart;
                             console.log('Done with', aFiles.length, 'files', iTotalFileSize, 'bytes');
-                            syslog.timeStop(sTimer, {filecount: aFiles.length, totallength: iTotalFileSize });
-
+                            console.log('Down Time', iTotalDl, 'Down Bandwidth', iTotalFileSize /(iTotalDl / 1000), 'bytes/sec');
+                            console.log('Up Time', iTotalUp, 'Up Bandwidth', iTotalFileSize /(iTotalUp / 1000), 'bytes/sec');
                             test.done();
                         }
                     );
