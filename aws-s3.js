@@ -52,16 +52,17 @@
     {   
         this.S3.getObject({Bucket: this.bucket, Key: sFromFile}, function(err, obj)
             {
-                if (obj !== undefined && obj.Body !== undefined) {
+                if (obj == null || obj.Body == null) {
+                    callback(err, null);
+                }
+                else {
                     var fd =  fs.openSync(sToFile, 'w');
                     var buff = new Buffer(obj.Body, 'base64');
                     fs.write(fd, buff, 0, buff.length, 0, function(err,written){
                         callback(err, sToFile);  
                     });
                 }
-                else {
-                    callback(err, null);
-                }
+                
             });
     };
 
