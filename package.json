@@ -18,7 +18,8 @@
         "nodeunit":            ">=0.7.4",
         "longjohn":            "*",
         "fs-extended":      "git://github.com/FastSociety/node-fs-extended.git",
-        "syslog-console":   "git://github.com/FastSociety/node-syslog-console.git"
+        "syslog-console":   "git://github.com/FastSociety/node-syslog-console.git",
+        "aws-sdk":          "1.7.0"
     }
 
 }
