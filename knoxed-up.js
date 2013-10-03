@@ -87,6 +87,10 @@
             if (oError) {
                 syslog.error(oLog);
             } else {
+                if (oLog.file_size !== undefined) {
+                    oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
+                }
+
                 syslog.timeStop(sTimer, oLog);
             }
 
@@ -133,7 +137,8 @@
 
             if (oResponse.headers !== undefined) {
                 if (oResponse.headers['content-length'] !== undefined) {
-                    iLengthTotal = parseInt(oResponse.headers['content-length'], 10);
+                    iLengthTotal   = parseInt(oResponse.headers['content-length'], 10);
+                    oLog.file_size = iLengthTotal;
                 }
             }
 
@@ -165,11 +170,6 @@
                     .on('end', function(){
                         if (sCommand == 'get') {
                             if (iLengthTotal !== null) {
-                                oLog.length = {
-                                    download: iLength,
-                                    total:    iLengthTotal
-                                };
-
                                 if (iLength < iLengthTotal) {
                                     return fRetry('KnoxedUp._command.get.response.incorrect.length', new Error('Content Length did not match Header'));
                                 }
@@ -474,8 +474,8 @@
      */
     KnoxedUp.prototype.putStream = function(sFrom, sTo, oHeaders, fCallback, iRetries) {
         var bHasCallback = typeof fCallback == 'function';
-        var iRetries    = iRetries !== undefined ? iRetries : 0;
-        var fCallback   = bHasCallback ? fCallback : function() {};
+            iRetries     = iRetries !== undefined ? iRetries : 0;
+            fCallback    = bHasCallback ? fCallback : function() {};
 
         var oLog = {
             action:    'KnoxedUp.putStream',
@@ -491,6 +491,10 @@
             if (oError) {
                 syslog.error(oLog);
             } else {
+                if (oLog.file_size !== undefined) {
+                    oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
+                }
+                
                 syslog.timeStop(sTimer, oLog);
             }
 
@@ -519,6 +523,10 @@
                 if (oError) {
                     fCallback(oError);
                 } else {
+                    if (oPreppedHeaders['Content-Length'] !== undefined) {
+                        oLog.file_size = oPreppedHeaders['Content-Length'];
+                    }
+
                     var oStream  = fs.createReadStream(sFrom);
 
                     oStream.on('error', function(oError) {
