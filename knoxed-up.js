@@ -55,7 +55,7 @@
             callback: bHasCallback
         };
 
-        var aTimeoutLevels = [10, 20, 30, 45, 60];
+        var aTimeoutLevels = [10, 20, 30, 60];
         var iTimeoutIndex  = 0;
 
         var iTimeout = setInterval(function() {
@@ -69,14 +69,14 @@
 
                 
                 case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.error({action: 'KnoxedUp.timeFailure', error: new Error('We have been waiting for KnoxedUp for over ' + iTimeoutIndex + ' seconds'), oLog: oLog});
+                    syslog.warn({action: 'KnoxedUp.timeFailure', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), oLog: oLog});
                     clearInterval(iTimeout);
                     // fCallback(oLog.action + ' Timeout');
                     break;
 
-                // Interim Errors
+                // Interim Warnings
                 case aTimeoutLevels.indexOf(iTimeoutIndex):
-                    syslog.warn({action: 'KnoxedUp.timeSternWarning', error: new Error('We have been waiting for KnoxedUp for over ' + iTimeoutIndex + ' seconds'), oLog: oLog});
+                    syslog.warn({action: 'KnoxedUp.timeSternWarning', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog});
                     break;
             }
         }, 1000);
@@ -84,6 +84,8 @@
 
         var sTimer = syslog.timeStart(oLog.action, oLog);
         var fDone  = function(fDoneCallback, oError, oResponse, sData) {
+            clearInterval(iTimeout);
+
             if (oError) {
                 syslog.error(oLog);
             } else {
@@ -478,7 +480,7 @@
             fCallback    = bHasCallback ? fCallback : function() {};
 
         var oLog = {
-            action:    'KnoxedUp.putStream',
+            action:   'KnoxedUp.putStream',
             from:     sFrom,
             to:       sTo,
             headers:  oHeaders,
@@ -494,7 +496,7 @@
                 if (oLog.file_size !== undefined) {
                     oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
                 }
-                
+
                 syslog.timeStop(sTimer, oLog);
             }
 
