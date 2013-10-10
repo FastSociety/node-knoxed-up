@@ -965,9 +965,10 @@
      * @param {Function} fCallback
      * @private
      */
-    KnoxedUp.prototype._toTemp = function(sTempFile, sFile, sType, sCheckHash, sExtension, fCallback) {
-        var sTimer = syslog.timeStart('KnoxedUp._toTemp');
-        sExtension = KnoxedUp._dotExtension(sExtension);
+    KnoxedUp.prototype._toTemp = function(sTempFile, sFile, sType, sCheckHash, sExtension, fCallback, iRetries) {
+        var sTimer      = syslog.timeStart('KnoxedUp._toTemp');
+            sExtension  = KnoxedUp._dotExtension(sExtension);
+            iRetries    = iRetries !== undefined ? iRetries : 0;
 
         async.auto({
             get:             function(fAsyncCallback, oResults) { this.getFile(sFile, sTempFile, sType, fAsyncCallback) }.bind(this),
@@ -976,13 +977,18 @@
             cache: ['check', function(fAsyncCallback, oResults) { this._cacheFile(oResults.move.path, fAsyncCallback) }.bind(this)]
         }, function(oError, oResults) {
             if (oError) {
-                syslog.error({action: sTimer + '.error', input: sTempFile, error: oError, hash: sCheckHash, results: oResults});
-                fCallback(oError);
+                if (iRetries < 3) {
+                    syslog.warn({action: sTimer + '.error', input: sTempFile, error: oError, hash: sCheckHash, retries: iRetries});
+                    this._toTemp(sTempFile, sFile, sType, sCheckHash, sExtension, fCallback, iRetries + 1);
+                } else {
+                    syslog.error({action: sTimer + '.error', input: sTempFile, error: oError, hash: sCheckHash, retries: iRetries, results: oResults});
+                    fCallback(oError);
+                }
             } else {
                 syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.copy});
                 fCallback(null, oResults.move.path, oResults.move.hash);
             }
-        });
+        }.bind(this));
     };
 
     /**
