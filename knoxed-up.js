@@ -963,6 +963,7 @@
      * @param {String} sCheckHash
      * @param {String} sExtension
      * @param {Function} fCallback
+     * @param {Integer} [iRetries]
      * @private
      */
     KnoxedUp.prototype._toTemp = function(sTempFile, sFile, sType, sCheckHash, sExtension, fCallback, iRetries) {
