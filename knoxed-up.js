@@ -545,6 +545,7 @@
                             if (iRetries > 3) {
                                 oLog.action += '.request.hang_up.retry.max';
                                 oLog.error   = oError;
+                                syslog.error(oLog);
                                 fDone(fCallback, oLog.error);
                             } else {
                                 oLog.action += '.request.hang_up.retry';
