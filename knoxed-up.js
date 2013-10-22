@@ -540,6 +540,7 @@
 
                     var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
                         oStream.destroy();
+                        oLog.status = oResponse.statusCode;
 
                         if (oError) {
                             if (iRetries > 3) {
@@ -563,7 +564,7 @@
                                 syslog.warn(oLog);
                                 this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
                             }
-                        } else if(oResponse.statusCode > 400) {
+                        } else if(oResponse.statusCode >= 400) {
                             oLog.error = new Error('S3 Error Code ' + oResponse.statusCode);
                             fDone(fCallback, oLog.error);
                         } else {
