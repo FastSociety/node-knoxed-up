@@ -210,7 +210,7 @@
     };
 
     KnoxedUp.prototype.getFile = function (sFilename, sToFile, sType, fCallback) {
-        //syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
+        syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
 
         var sTimer  = syslog.timeStart('KnoxedUp.getFile');
         var bError  = false;
@@ -230,13 +230,13 @@
             oToFile.on('close', function() {
                 bClosed = true;
                 if (!bError) {
-                    //syslog.debug({action: 'KnoxedUp.getFile.write.done', output: sToFile});
+                    syslog.debug({action: 'KnoxedUp.getFile.write.done', output: sToFile});
                     fCallback(null, sToFile);
                 }
             });
 
             var oRequest = this._get(sFilename, sType, {}, function(oError, oResponse, sData, iRetries) {
-                //syslog.debug({action: 'KnoxedUp.getFile.got'});
+                syslog.debug({action: 'KnoxedUp.getFile.got'});
                 if (oError) {
                     syslog.error({action: sTimer + '.error', input: sFilename, error: oError});
                     bError = true;
@@ -245,20 +245,20 @@
                     fs.exists(sToFile, function(bExists) {
                         if (bExists) {
                             fs.unlink(sToFile, function() {
-                                //syslog.debug({action: 'KnoxedUp.getFile.unlink.done'});
+                                syslog.debug({action: 'KnoxedUp.getFile.unlink.done'});
                                 fCallback(oError);
                             });
                         } else {
-                            //syslog.debug({action: 'KnoxedUp.getFile.done'});
+                            syslog.debug({action: 'KnoxedUp.getFile.done'});
                             fCallback(oError);
                         }
                     });
                 } else if (!bClosed) {
-                    //syslog.debug({action: 'KnoxedUp.getFile.request.end'});
+                    syslog.debug({action: 'KnoxedUp.getFile.request.end'});
 
                     // Weird case where file may be incomplete
                     if (iRetries) {
-                        //syslog.debug({action: 'KnoxedUp.getFile.request.end.retried'});
+                        syslog.debug({action: 'KnoxedUp.getFile.request.end.retried'});
                         bError = true;
                         oToFile.end();
 
@@ -276,7 +276,7 @@
             });
 
             oRequest.on('response', function(oResponse) {
-                //syslog.debug({action: 'KnoxedUp.getFile.response'});
+                syslog.debug({action: 'KnoxedUp.getFile.response'});
 
                 oResponse.on('data', function(sChunk) {
                     if (!bError) {
