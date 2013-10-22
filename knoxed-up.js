@@ -402,7 +402,7 @@
             fCallback(null, getFiles());
         } else {
             this._get('/?prefix=' + sPrefix + '&max-keys=' + iMax, 'utf-8', {}, function(oError, oResponse, sData) {
-                syslog.error({action: 'KnoxedUp.getFileList', status: oResponse.statusCode});
+                syslog.debug({action: 'KnoxedUp.getFileList', status: oResponse.statusCode});
                 if (oError) {
                     syslog.error({action: 'KnoxedUp.getFileList.error', error:oError});
                     fCallback(oError);
