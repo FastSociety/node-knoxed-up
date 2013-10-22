@@ -214,30 +214,60 @@
     KnoxedUp.prototype.getFile = function (sFilename, sToFile, sType, fCallback) {
         syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
 
-        var sTimer  = syslog.timeStart('KnoxedUp.getFile');
-        var bError  = false;
-        var bClosed = false;
-        var oToFile = fs.createWriteStream(sToFile, {
+        var sTimer   = syslog.timeStart('KnoxedUp.getFile');
+        var bError   = false;
+        var bClosed  = false;
+        var oHeaders = {};
+        var oToFile  = fs.createWriteStream(sToFile, {
             flags:    'w',
             encoding: sType
         });
+
+        var fDone = function(sFile) {
+            syslog.timeStop(sTimer, {input: sFilename, output: sToFile, headers: oHeaders});
+            fCallback(null, sToFile);
+        };
+
+        var fCheck = function(oError, sFile) {
+            if (oError) {
+                syslog.error({action: sTimer + '.error', input: sFilename, headers: oHeaders, error: oError});
+                fCallback(oError);
+            } else if (oHeaders['x-amz-meta-sha1'] !== undefined) {
+                fsX.hashFile(sToFile, function(oError, sHash) {
+                    if (oError) {
+                        syslog.error({action: sTimer + '.hash.error', input: sFilename, headers: oHeaders, error: oError});
+                        fCallback(oError);
+                    } else {
+                        if (oHeaders['x-amz-meta-sha1'] != sHash) {
+                            syslog.error({action: sTimer + '.hash.mismatch.error', input: sFilename, headers: oHeaders, hash: sHash, error: new Error('Hash Mismatch')});
+                            fCallback(oError);
+                        } else {
+                            fDone(sFile);
+                        }
+                    }
+                });
+            } else {
+                fDone(sFile);
+            }
+        };
 
         oToFile.on('open', function(fd) {
             oToFile.on('error', function(oError) {
                 bError = true;
                 syslog.error({action: sTimer + '.write.error', input: sFilename, message: 'failed to open file for writing: (' + sToFile + ')', error: oError});
-                fCallback(oError);
+                fCheck(oError);
             });
 
             oToFile.on('close', function() {
                 bClosed = true;
                 if (!bError) {
                     syslog.debug({action: 'KnoxedUp.getFile.write.done', output: sToFile});
-                    fCallback(null, sToFile);
+                    fCheck(null, sToFile);
                 }
             });
 
             var oRequest = this._get(sFilename, sType, {}, function(oError, oResponse, sData, iRetries) {
+                oHeaders = oResponse.headers;
                 syslog.debug({action: 'KnoxedUp.getFile.got'});
                 if (oError) {
                     syslog.error({action: sTimer + '.error', input: sFilename, error: oError});
@@ -248,11 +278,11 @@
                         if (bExists) {
                             fs.unlink(sToFile, function() {
                                 syslog.debug({action: 'KnoxedUp.getFile.unlink.done'});
-                                fCallback(oError);
+                                fCheck(oError);
                             });
                         } else {
                             syslog.debug({action: 'KnoxedUp.getFile.done'});
-                            fCallback(oError);
+                            fCheck(oError);
                         }
                     });
                 } else if (!bClosed) {
@@ -267,10 +297,9 @@
                         fs.writeFile(sToFile, sData, sType, function(oWriteError) {
                             if (oWriteError) {
                                 syslog.error({action: sTimer + '.writeFile.error', input: sFilename, error: oWriteError});
-                                fCallback(oWriteError);
+                                fCheck(oWriteError);
                             } else {
-                                syslog.timeStop(sTimer, {input: sFilename, output: sToFile});
-                                fCallback(null, sToFile);
+                                fCheck(null, sToFile);
                             }
                         })
                     }
@@ -278,6 +307,7 @@
             });
 
             oRequest.on('response', function(oResponse) {
+                oHeaders = oResponse.headers;
                 syslog.debug({action: 'KnoxedUp.getFile.response'});
 
                 oResponse.on('data', function(sChunk) {
