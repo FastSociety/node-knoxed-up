@@ -144,6 +144,8 @@
                 }
             }
 
+            oLog.status = oResponse.statusCode;
+
             if (oResponse.statusCode == 500) {
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.hang_up', new Error('S3 Error Code ' + oResponse.statusCode));
             } else if(oResponse.statusCode > 399) {
@@ -369,9 +371,8 @@
 
             fCallback(null, getFiles());
         } else {
-            syslog.pause(true);
             this._get('/?prefix=' + sPrefix + '&max-keys=' + iMax, 'utf-8', {}, function(oError, oResponse, sData) {
-                syslog.pause(false);
+                syslog.error({action: 'KnoxedUp.getFileList', status: oResponse.statusCode});
                 if (oError) {
                     syslog.error({action: 'KnoxedUp.getFileList.error', error:oError});
                     fCallback(oError);
@@ -706,7 +707,7 @@
         var sLocalPath = path.join(KnoxedUp.sPath, this.oConfig.bucket, sFrom);
         if (KnoxedUp.isLocal() && this._localFileExists(sLocalPath)) {
             var sFromLocal = sLocalPath;
-            var sToLocal   = path.join(KnoxedUp.sPath, sBucket,             sTo);
+            var sToLocal   = path.join(KnoxedUp.sPath, sBucket, sTo);
 
             fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
                 fsX.copyFile(sFromLocal, sToLocal, fCallback);
