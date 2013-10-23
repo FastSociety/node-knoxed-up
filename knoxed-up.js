@@ -585,7 +585,7 @@
                                 syslog.warn(oLog);
                                 this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
                             }
-                        } else if(oResponse.statusCode == 500) {
+                        } else if(oResponse.statusCode >= 400) {
                             oLog.error   = new Error('S3 Error Code ' + oResponse.statusCode);
                             oLog.action += '.request.500.retry';
                             if (iRetries > 3) {
@@ -595,9 +595,6 @@
                                 syslog.warn(oLog);
                                 this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
                             }
-                        } else if(oResponse.statusCode >= 400) {
-                            oLog.error = new Error('S3 Error Code ' + oResponse.statusCode);
-                            fDone(fCallback, oLog.error);
                         } else {
                             oLog.action += '.done';
                             fDone(fCallback, null, sTo);
