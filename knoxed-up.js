@@ -267,7 +267,10 @@
             });
 
             var oRequest = this._get(sFilename, sType, {}, function(oError, oResponse, sData, iRetries) {
-                oHeaders = oResponse.headers;
+                if (oResponse) {
+                    oHeaders = oResponse.headers;
+                }
+                
                 syslog.debug({action: 'KnoxedUp.getFile.got'});
                 if (oError) {
                     syslog.error({action: sTimer + '.error', input: sFilename, error: oError});
