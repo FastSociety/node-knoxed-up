@@ -135,7 +135,10 @@
         }.bind(this));
 
         oRequest.on('response', function(oResponse) {
-            oLog.status  = oResponse.statusCode;
+            oLog.status = -1;
+            if (oResponse) {
+                oLog.status = oResponse.statusCode;
+            }
 
             if (oResponse.headers !== undefined) {
                 if (oResponse.headers['content-length'] !== undefined) {
@@ -143,8 +146,6 @@
                     oLog.file_size = iLengthTotal;
                 }
             }
-
-            oLog.status = oResponse.statusCode;
 
             if (oResponse.statusCode == 500) {
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.hang_up', new Error('S3 Error Code ' + oResponse.statusCode));
@@ -405,7 +406,12 @@
             fCallback(null, getFiles());
         } else {
             this._get('/?prefix=' + sPrefix + '&max-keys=' + iMax, 'utf-8', {}, function(oError, oResponse, sData) {
-                syslog.debug({action: 'KnoxedUp.getFileList', status: oResponse.statusCode});
+                var iStatusCode = -1;
+                if (oResponse) {
+                    iStatusCode = oResponse.statusCode;
+                }
+                syslog.debug({action: 'KnoxedUp.getFileList', status: iStatusCode});
+
                 if (oError) {
                     syslog.error({action: 'KnoxedUp.getFileList.error', error:oError});
                     fCallback(oError);
@@ -574,7 +580,10 @@
 
                     var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
                         oStream.destroy();
-                        oLog.status = oResponse.statusCode;
+                        oLog.status = -1;
+                        if (oResponse) {
+                            oLog.status = oResponse.statusCode;
+                        }
 
                         if (oError) {
                             if (iRetries > 3) {
