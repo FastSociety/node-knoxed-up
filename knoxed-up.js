@@ -39,11 +39,13 @@
      * @param {String} sType
      * @param {Object} oHeaders
      * @param {Function} fCallback
-     * @param {Integer} [iRetries]
+     * @param {Integer} [iAttempts]
+     * @param {Integer} [iMaxAttempts]
      * @private
      */
-    KnoxedUp.prototype._command = function (sCommand, sFilename, sType, oHeaders, fCallback, iRetries) {
-        var iRetries     = iRetries !== undefined ? iRetries : 0;
+    KnoxedUp.prototype._command = function (sCommand, sFilename, sType, oHeaders, fCallback, iAttempts, iMaxAttempts) {
+        var iAttempts    = iAttempts    !== undefined ? iAttempts    : 1;
+        var iMaxAttempts = iMaxAttempts !== undefined ? iMaxAttempts : 10;
         var bHasCallback = typeof fCallback == 'function';
 
         var oLog = {
@@ -51,11 +53,11 @@
             command:  sCommand,
             file:     sFilename,
             headers:  oHeaders,
-            retries:  iRetries,
+            attempts: iAttempts,
             callback: bHasCallback
         };
 
-        var aTimeoutLevels = [10, 20, 30, 60];
+        var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
         var iTimeoutIndex  = 0;
 
         var iTimeout = setInterval(function() {
@@ -70,7 +72,7 @@
                 
                 case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
                     syslog.warn({action: 'KnoxedUp.timeFailure', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), oLog: oLog});
-                    clearInterval(iTimeout);
+                    // clearInterval(iTimeout);
                     // fCallback(oLog.action + ' Timeout');
                     break;
 
@@ -96,18 +98,27 @@
                 syslog.timeStop(sTimer, oLog);
             }
 
-            fDoneCallback(oError, oResponse, sData, iRetries);
+            fDoneCallback(oError, oResponse, sData, iAttempts);
         };
 
-        var fRetry = function(sAction, oError) {
-            if (iRetries > 3) {
+        var fRetry = function(sAction, oError, iNewMaxAttempts) {
+            iNewMaxAttempts = iNewMaxAttempts !== undefined ? iNewMaxAttempts : iMaxAttempts;
+
+            if (iAttempts > iMaxAttempts) {
                 oLog.action  = sAction + '.retry.max';
                 oLog.error   = oError;
                 fDone(fCallback, oLog.error);
             } else {
-                oLog.action  = sAction + '.retry';
+                // Exponential Backoff
+                var iBackOff      = iAttempts <= 11 ? iAttempts : 11;
+                var iNextAttempt  = Math.pow(2, iBackOff) * 1000;
+                oLog.action       = sAction + '.retry';
+                oLog.next_attempt = iNextAttempt;
                 syslog.warn(oLog);
-                this._command(sCommand, sFilename, sType, oHeaders, fCallback, iRetries + 1);
+
+                setTimeout(function() {
+                    this._command(sCommand, sFilename, sType, oHeaders, fCallback, iAttempts + 1, iNewMaxAttempts);
+                }.bind(this), iNextAttempt);
             }
         }.bind(this);
 
@@ -149,18 +160,12 @@
 
             if (oResponse.statusCode == 500) {
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.hang_up', new Error('S3 Error Code ' + oResponse.statusCode));
+            } else if (oResponse.statusCode > 500) {
+                return fRetry('KnoxedUp._command.' + sCommand + '.request.error',   new Error('S3 Error Code ' + oResponse.statusCode));
+            } else if(oResponse.statusCode == 404) {
+                return fRetry('KnoxedUp._command.' + sCommand + '.request.error',   new Error('File Not Found'), 4);
             } else if(oResponse.statusCode > 399) {
-                switch(oResponse.statusCode) {
-                    case 404:
-                        oLog.error = new Error('File Not Found');
-                        break;
-
-                    default:
-                        oLog.error = new Error('S3 Error Code ' + oResponse.statusCode);
-                        break;
-                }
-
-                fDone(fCallback, oLog.error);
+                return fRetry('KnoxedUp._command.' + sCommand + '.request.error',   new Error('S3 Error Code ' + oResponse.statusCode), 4);
             } else {
                 oResponse.setEncoding(sType);
                 oResponse
