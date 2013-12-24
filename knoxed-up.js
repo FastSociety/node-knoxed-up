@@ -298,7 +298,8 @@
                     syslog.debug({action: 'KnoxedUp.getFile.request.end'});
 
                     // Weird case where file may be incomplete
-                    if (iRetries) {
+                    // if (iRetries) { // this was always true
+                    if (iRetries > 1) {
                         syslog.debug({action: 'KnoxedUp.getFile.request.end.retried'});
                         bError = true;
                         oToFile.end();
