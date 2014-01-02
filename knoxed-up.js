@@ -60,31 +60,32 @@
         var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
         var iTimeoutIndex  = 0;
 
+        var sTimer = syslog.timeStart(oLog.action, oLog);
+
         var iTimeout = setInterval(function() {
             iTimeoutIndex++;
 
             switch (true) {
                 // First Warning.
                 case iTimeoutIndex == aTimeoutLevels[0]:
-                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex });
+                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer) });
                     break;
 
                 
                 case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.error({action: 'KnoxedUp.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex});
+                    syslog.error({action: 'KnoxedUp.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
                     // clearInterval(iTimeout);
                     // fCallback(oLog.action + ' Timeout');
                     break;
 
                 // Interim Warnings
                 case aTimeoutLevels.indexOf(iTimeoutIndex):
-                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex});
+                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
                     break;
             }
         }, 1000);
 
 
-        var sTimer = syslog.timeStart(oLog.action, oLog);
         var fDone  = function(fDoneCallback, oError, oResponse, sData) {
             clearInterval(iTimeout);
 
