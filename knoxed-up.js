@@ -66,19 +66,19 @@
             switch (true) {
                 // First Warning.
                 case iTimeoutIndex == aTimeoutLevels[0]:
-                    syslog.warn({action: 'KnoxedUp.timeWarning', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog });
+                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex });
                     break;
 
                 
                 case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.warn({action: 'KnoxedUp.timeFailure', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), oLog: oLog});
+                    syslog.error({action: 'KnoxedUp.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex});
                     // clearInterval(iTimeout);
                     // fCallback(oLog.action + ' Timeout');
                     break;
 
                 // Interim Warnings
                 case aTimeoutLevels.indexOf(iTimeoutIndex):
-                    syslog.warn({action: 'KnoxedUp.timeSternWarning', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog});
+                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex});
                     break;
             }
         }, 1000);
