@@ -44,24 +44,20 @@ try {
             } 
             else {
                 console.log('getFile finished downloading file, about to take sha1 sum of downloaded file');
-                // exec('sha1sum ' + sTempFile, function(oError, sSTDOut, sSTDError) {
-                //     if (oError) {
-                //         console.error('getFile sha1sum Error', oError);
-                //         process.exit(1);
-                //     } 
-                //     else {
-                //         var aHash = sSTDOut.split(' ');
-                //         console.log('return hash (',aHash[0],') original ', sHash);
-                //         if (aHash[0] !== sHash) {
-                //             console.log('getFile error with trial, sha1sum mismatch (',aHash[0],')',sHash);
-                //             process.exit(1);
-                //         }
-                hashFile(sTempFile, function(oError, sReturnedHash) {
+                exec('sha1sum ' + sTempFile, function(oError, sSTDOut, sSTDError) {
                     if (oError) {
-                        console.error('getFile hashFile Error', oError);
+                        console.error('getFile sha1sum Error', oError);
                         process.exit(1);
                     } 
                     else {
+                        var aHash = sSTDOut.split(' ');
+                        var sReturnedHash = aHash[0];
+                // hashFile(sTempFile, function(oError, sReturnedHash) {
+                //     if (oError) {
+                //         console.error('getFile hashFile Error', oError);
+                //         process.exit(1);
+                //     } 
+                //     else {
                         console.log('return hash (',sReturnedHash,') original ', sHash);
                         if (sReturnedHash !== sHash) {
                             console.log('getFile error with trial, sha1sum mismatch (',sReturnedHash,')',sHash);
