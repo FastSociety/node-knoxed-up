@@ -3,7 +3,6 @@
     var fs          = require('fs');
     var fsX         = require('fs-extended');
     var crypto      = require('crypto');
-    var shasum      = crypto.createHash('sha1');
 
     var s3 = new KnoxedUp({
         key:    'AKIAID4DZLKY7M5YJAFA',
@@ -17,12 +16,11 @@
     }
 
 try {
-
     var getPath = function(sHash) {
         return sHash.substr(0, 1) + '/' + sHash.substr(1, 1) + '/' + sHash.substr(2, 1) + '/' + sHash;
     };
 
-    var getFile = function(sHash) {
+    var getFile = function(i,sHash,cb) {
         var sPath = getPath(sHash);
         s3.getFile(sPath, './' + sHash, 'binary', function(oError, sTempFile) {
             if (oError) {
@@ -46,7 +44,8 @@ try {
                         else {
                             console.log('matched hashes',aHash[0], sHash);
                             fs.unlinkSync(sHash);
-                            process.exit(0);
+                            cb(i,sHash);
+                            //process.exit(0);
                         }
                     }
                 });
@@ -62,6 +61,7 @@ try {
         }
         var sData = aData.join('');
         console.log('aData.length',aData.length,'sData.length',sData.length);
+        var shasum = crypto.createHash('sha1');      
         shasum.update(sData);
         var sHash = shasum.digest('hex');
         console.log('genBlob sHash',sHash);    
@@ -69,7 +69,7 @@ try {
         cb(null,sHash);
     }
 
-    var go = function() {
+    var go = function(i,cb) {
         // many sd videos 500k-1MB range
         genBlob(700000,function(oError,sHash) {
             if (oError) {
@@ -99,7 +99,7 @@ try {
                                 // remove local file
                                 fs.unlinkSync(sHash);
                                 console.log('go deleted local file');
-                                getFile(sHash);
+                                getFile(i,sHash,cb);
                             }
                         });
                     }
@@ -108,8 +108,11 @@ try {
         });        
     }
 
-
-    go();
+    for (var i=0;i < 10;i++) {
+        go(i,function(i,sHash) { 
+            console.log('main loop finished',i,sHash)
+        });
+    }
 
 }
 catch (e) {
