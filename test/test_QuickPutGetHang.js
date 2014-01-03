@@ -21,32 +21,66 @@ try {
         return sHash.substr(0, 1) + '/' + sHash.substr(1, 1) + '/' + sHash.substr(2, 1) + '/' + sHash;
     };
 
+    var hashFile = function(sFile,cb) {
+        var hash = crypto.createHash('sha1');
+        hash.setEncoding('hex');
+        
+        var fileStream = fs.createReadStream(sFile);
+        
+        fileStream.on('end',function(oError) {
+            hash.end();
+            cb(oError,hash.read());
+        });
+
+        fileStream.pipe(hash);
+    }
+
     var getFile = function(i,sHash,cb) {
         var sPath = getPath(sHash);
         s3.getFile(sPath, './' + sHash, 'binary', function(oError, sTempFile) {
             if (oError) {
-                console.log('KnoxedUp getFile caught error',oError);
+                console.log('getFile KnoxedUp getFile caught error',oError);
                 process.exit(1);
             } 
             else {
-                console.log('finished downloading file, about to take sha1 sum of downloaded file');
-                exec('sha1sum ' + sTempFile, function(oError, sSTDOut, sSTDError) {
+                console.log('getFile finished downloading file, about to take sha1 sum of downloaded file');
+                // exec('sha1sum ' + sTempFile, function(oError, sSTDOut, sSTDError) {
+                //     if (oError) {
+                //         console.error('getFile sha1sum Error', oError);
+                //         process.exit(1);
+                //     } 
+                //     else {
+                //         var aHash = sSTDOut.split(' ');
+                //         console.log('return hash (',aHash[0],') original ', sHash);
+                //         if (aHash[0] !== sHash) {
+                //             console.log('getFile error with trial, sha1sum mismatch (',aHash[0],')',sHash);
+                //             process.exit(1);
+                //         }
+                hashFile(sTempFile, function(oError, sReturnedHash) {
                     if (oError) {
-                        console.error('sha1sum Error', oError);
+                        console.error('getFile hashFile Error', oError);
                         process.exit(1);
                     } 
                     else {
-                        var aHash = sSTDOut.split(' ');
-                        console.log('return hash (',aHash[0],') original ', sHash);
-                        if (aHash[0] !== sHash) {
-                            console.log('error with trial, sha1sum mismatch (',aHash[0],')',sHash);
+                        console.log('return hash (',sReturnedHash,') original ', sHash);
+                        if (sReturnedHash !== sHash) {
+                            console.log('getFile error with trial, sha1sum mismatch (',sReturnedHash,')',sHash);
                             process.exit(1);
                         }
                         else {
-                            console.log('matched hashes',aHash[0], sHash);
-                            fs.unlinkSync(sHash);
-                            cb(i,sHash);
-                            //process.exit(0);
+                            console.log('getFile matched hashes',sReturnedHash, sHash);
+                            fs.unlink(sHash,function(oUnlinkError) {
+                                s3.deleteFile(sPath, function(oError) {
+                                    if (oError) {
+                                        console.log('getFile s3.deleteFile returned error',oError);
+                                        process.exit(1);
+                                    }            
+                                    else {    
+                                        console.log('getFile s3.deleted File',sPath);            
+                                        cb(i,sHash);
+                                    }
+                                });                                
+                            });
                         }
                     }
                 });
@@ -66,8 +100,9 @@ try {
         shasum.update(sData);
         var sHash = shasum.digest('hex');
         console.log('genBlob sHash',sHash);    
-        fs.writeFileSync(sHash,sData);
-        cb(null,sHash);
+        fs.writeFile(sHash,sData,function(oError) {
+            cb(oError,sHash);
+        }.bind(this));
     }
 
     var go = function(i,cb) {
@@ -98,9 +133,10 @@ try {
                             else {
                                 console.log('go s3.putStream succeeded sha1hash',sHash);
                                 // remove local file
-                                fs.unlinkSync(sHash);
-                                console.log('go deleted local file');
-                                getFile(i,sHash,cb);
+                                fs.unlink(sHash,function(oUnlinkError) {
+                                    console.log('go deleted local file');
+                                    getFile(i,sHash,cb);
+                                });
                             }
                         });
                     }
