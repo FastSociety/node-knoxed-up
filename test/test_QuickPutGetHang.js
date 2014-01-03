@@ -3,6 +3,7 @@
     var fs          = require('fs');
     var fsX         = require('fs-extended');
     var crypto      = require('crypto');
+    var args        = process.argv.slice(2);
 
     var s3 = new KnoxedUp({
         key:    'AKIAID4DZLKY7M5YJAFA',
@@ -107,7 +108,7 @@ try {
             }
         });        
     }
-    var iDone=0,N=10;
+    var iDone=0,N=parseInt(args[0],10) || 10;
     for (var i=0;i < N;i++) {
         go(i,function(i,sHash) { 
             iDone++;
