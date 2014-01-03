@@ -107,14 +107,18 @@ try {
             }
         });        
     }
-
-    for (var i=0;i < 10;i++) {
+    var iDone=0,N=10;
+    for (var i=0;i < N;i++) {
         go(i,function(i,sHash) { 
+            iDone++;
             console.log('main loop finished',i,sHash)
+            if (iDone == N) {
+                console.log('main loop finished all blob tests');
+            }
         });
     }
 
 }
 catch (e) {
-    console.log('error',e);
+    console.log('tryCatch error',e);
 }
