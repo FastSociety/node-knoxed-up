@@ -9,6 +9,7 @@
         key:    'AKIAID4DZLKY7M5YJAFA',
         secret: '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',
         bucket: 'messel.test.cameo.tv',
+        region: 'external-1',
         port:   80
     });
 
