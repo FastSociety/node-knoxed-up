@@ -18,9 +18,8 @@
                 port:   80
             };
 
-            // wierdly the endpoint goes into the region
-            // wierder still, it needs to be a subset of the enpoint name
-            // i.e. s3-external-1 must be specified as external-1
+            // i.e. s3-external-1.amazonaws.com
+            // see http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
             if (oConfig.AMAZON.ENDPOINT !== undefined)
                 this.oConfig.endpoint = oConfig.AMAZON.ENDPOINT;
 
