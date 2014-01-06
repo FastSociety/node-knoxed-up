@@ -18,8 +18,15 @@
                 port:   80
             };
 
+<<<<<<< HEAD
             if (oConfig.AMAZON.REGION !== undefined)
                 this.oConfig.region = oConfig.AMAZON.REGION;
+=======
+            // i.e. s3-external-1.amazonaws.com
+            // see http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
+            if (oConfig.AMAZON.ENDPOINT !== undefined)
+                this.oConfig.endpoint = oConfig.AMAZON.ENDPOINT;
+>>>>>>> 3658bd740ea40f5e3a0df5f1bc81a8a37cd2e23e
 
             this.sOriginalBucket = oConfig.AMAZON.BUCKET;
 
@@ -63,31 +70,32 @@
         var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
         var iTimeoutIndex  = 0;
 
+        var sTimer = syslog.timeStart(oLog.action, oLog);
+
         var iTimeout = setInterval(function() {
             iTimeoutIndex++;
 
             switch (true) {
                 // First Warning.
                 case iTimeoutIndex == aTimeoutLevels[0]:
-                    syslog.warn({action: 'KnoxedUp.timeWarning', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog });
+                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer) });
                     break;
 
                 
                 case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.warn({action: 'KnoxedUp.timeFailure', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), oLog: oLog});
+                    syslog.error({action: 'KnoxedUp.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
                     // clearInterval(iTimeout);
                     // fCallback(oLog.action + ' Timeout');
                     break;
 
                 // Interim Warnings
                 case aTimeoutLevels.indexOf(iTimeoutIndex):
-                    syslog.warn({action: 'KnoxedUp.timeSternWarning', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog});
+                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
                     break;
             }
         }, 1000);
 
 
-        var sTimer = syslog.timeStart(oLog.action, oLog);
         var fDone  = function(fDoneCallback, oError, oResponse, sData) {
             clearInterval(iTimeout);
 

@@ -3,6 +3,7 @@
     var fs          = require('fs');
     var fsX         = require('fs-extended');
     var crypto      = require('crypto');
+<<<<<<< HEAD
     var oConfig     = require('/etc/cameo/.config.js');
     var args        = process.argv.slice(2);
 
@@ -11,6 +12,15 @@
         secret: oConfig.AMAZON.SERVER.SECRET,
         bucket: 'messel.test.cameo.tv',
         region: oConfig.AMAZON.REGION,
+=======
+    var args        = process.argv.slice(2);
+
+    var s3 = new KnoxedUp({
+        key:    'AKIAID4DZLKY7M5YJAFA',
+        secret: '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',
+        bucket: 'messel.test.cameo.tv',
+        endpoint: 's3-external-1.amazonaws.com',
+>>>>>>> 3658bd740ea40f5e3a0df5f1bc81a8a37cd2e23e
         port:   80
     });
 
@@ -149,7 +159,10 @@ try {
             console.log('main loop finished',i,sHash)
             if (iDone == N) {
                 console.log('main loop finished all blob tests');
+<<<<<<< HEAD
                 process.exit(0);
+=======
+>>>>>>> 3658bd740ea40f5e3a0df5f1bc81a8a37cd2e23e
             }
         });
     }
