@@ -10,7 +10,7 @@
         key:    oConfig.AMAZON.SERVER.ID,
         secret: oConfig.AMAZON.SERVER.SECRET,
         bucket: 'messel.test.cameo.tv',
-        endpoint: 's3-external-1.amazonaws.com',
+        region: oConfig.AMAZON.REGION,
         port:   80
     });
 

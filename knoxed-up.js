@@ -18,8 +18,8 @@
                 port:   80
             };
 
-            if (oConfig.AMAZON.ENDPOINT !== undefined)
-                this.oConfig.endpoint = oConfig.AMAZON.ENDPOINT;
+            if (oConfig.AMAZON.REGION !== undefined)
+                this.oConfig.region = oConfig.AMAZON.REGION;
 
             this.sOriginalBucket = oConfig.AMAZON.BUCKET;
 
