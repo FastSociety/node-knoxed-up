@@ -149,6 +149,7 @@ try {
             console.log('main loop finished',i,sHash)
             if (iDone == N) {
                 console.log('main loop finished all blob tests');
+                process.exit(0);
             }
         });
     }
