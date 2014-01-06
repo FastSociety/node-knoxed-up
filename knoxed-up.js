@@ -22,7 +22,7 @@
             // wierder still, it needs to be a subset of the enpoint name
             // i.e. s3-external-1 must be specified as external-1
             if (oConfig.AMAZON.ENDPOINT !== undefined)
-                this.oConfig.region = oConfig.AMAZON.ENDPOINT;
+                this.oConfig.endpoint = oConfig.AMAZON.ENDPOINT;
 
             this.sOriginalBucket = oConfig.AMAZON.BUCKET;
 
