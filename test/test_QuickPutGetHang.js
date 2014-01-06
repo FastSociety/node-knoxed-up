@@ -3,11 +3,12 @@
     var fs          = require('fs');
     var fsX         = require('fs-extended');
     var crypto      = require('crypto');
+    var oConfig     = require('/etc/cameo/.config.js');
     var args        = process.argv.slice(2);
 
     var s3 = new KnoxedUp({
-        key:    'AKIAID4DZLKY7M5YJAFA',
-        secret: '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',
+        key:    oConfig.AMAZON.SERVER.ID,
+        secret: oConfig.AMAZON.SERVER.SECRET,
         bucket: 'messel.test.cameo.tv',
         endpoint: 's3-external-1.amazonaws.com',
         port:   80
