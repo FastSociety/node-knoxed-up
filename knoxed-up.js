@@ -98,6 +98,7 @@
             } else {
                 if (oLog.file_size !== undefined) {
                     oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
+                    oLog.bps = (oLog.file_size * 8) / (syslog.getTime(sTimer)/1000);
                 }
 
                 syslog.timeStop(sTimer, oLog);
