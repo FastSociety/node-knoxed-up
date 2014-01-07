@@ -18,15 +18,10 @@
                 port:   80
             };
 
-<<<<<<< HEAD
             if (oConfig.AMAZON.REGION !== undefined)
                 this.oConfig.region = oConfig.AMAZON.REGION;
-=======
             // i.e. s3-external-1.amazonaws.com
             // see http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
-            if (oConfig.AMAZON.ENDPOINT !== undefined)
-                this.oConfig.endpoint = oConfig.AMAZON.ENDPOINT;
->>>>>>> 3658bd740ea40f5e3a0df5f1bc81a8a37cd2e23e
 
             this.sOriginalBucket = oConfig.AMAZON.BUCKET;
 
