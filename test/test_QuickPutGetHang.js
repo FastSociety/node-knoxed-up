@@ -6,7 +6,7 @@
     var oConfig     = require('/etc/cameo/.config.js');
     var args        = process.argv.slice(2);
 
-    knoxConfig = {
+    var knoxConfig = {
         key:    oConfig.AMAZON.SERVER.ID,
         secret: oConfig.AMAZON.SERVER.SECRET,
         bucket: 'messel.test.cameo.tv',

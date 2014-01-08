@@ -68,7 +68,7 @@ try {
                             else {
                                 var aHash = sSTDOut.split(' ');
                                 var sReturnedHash = aHash[0];
-                        // hashFile(sTempFile, function(oError, sReturnedHash) {
+                        // hashFile(oFile.file, function(oError, sReturnedHash) {
                         //     if (oError) {
                         //         console.error('getFile hashFile Error', oError);
                         //         process.exit(1);
@@ -137,11 +137,11 @@ try {
         }.bind(this));
     }
 
-    var go = function(nBlobs) {
+    var go = function(nBlobs,nBytes) {
         async.times(nBlobs, 
             function (i, fCallbackAsync) {
             // many sd videos 500k-1MB range
-                genBlob(700000,function(oError,sHash) {
+                genBlob(nBytes,function(oError,sHash) {
                     if (oError) {
                        console.log('genBlob error returned ',oError);
                        fCallbackAsync(oError);
@@ -206,8 +206,8 @@ try {
         );
     }
 
-    var iDone=0,N=parseInt(args[0],10) || 10;
-    go(N);
+    var iDone=0,N=parseInt(args[0],10) || 10, NBytes=parseInt(args[1],10) || 700000;
+    go(N,NBytes);
 
 }
 catch (e) {
