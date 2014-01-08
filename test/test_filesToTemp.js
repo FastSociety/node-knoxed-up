@@ -44,70 +44,78 @@ try {
     }
 
     var getFiles = function(oFiles,cb) {
-        new KnoxedUp(oConfig).filesToTemp(oFiles, 'binary', function(oError, oTempFiles) {
-            if (oError) {
-                console.log({action: 'getFiles error', error: oError, files: oFiles});
-                cb(oError);
-            } 
-            else {
-                console.log('getFiles copied all files ',oTempFiles);
-                async.forEach(oTempFiles, function (oFile, fCallbackAsync) {
-                    var sHash = path.basename(oFile);
-                    exec('sha1sum ' + oFile, function(oError, sSTDOut, sSTDError) {
+        fsX.clearTmp(function() {
+            s3.filesToTemp(oFiles, 'binary', function(oError, oTempFiles) {
+                if (oError) {
+                    console.log({action: 'getFiles error', error: oError, files: oFiles});
+                    cb(oError);
+                } 
+                else {
+                    console.log('getFiles copied all files ',oTempFiles);
+                    var aTempFiles = [];
+                    for (var sObj in oTempFiles) {
+                        aTempFiles.push({ hash: sObj, file: oTempFiles[sObj]});
+                    }
+                    async.each(aTempFiles, function (oFile, fCallbackAsync) {
+                        var sHash = oFile.hash;
+                        // var sHash = oFile.split('/').pop();
+                        console.log('getFiles before sha1sum of oFile',oFile,'sHash',sHash);
+                        exec('sha1sum ' + oFile.file, function(oError, sSTDOut, sSTDError) {
+                            if (oError) {
+                                console.error('getFile sha1sum Error', oError);
+                                fCallbackAsync(oError)
+                            } 
+                            else {
+                                var aHash = sSTDOut.split(' ');
+                                var sReturnedHash = aHash[0];
+                        // hashFile(sTempFile, function(oError, sReturnedHash) {
+                        //     if (oError) {
+                        //         console.error('getFile hashFile Error', oError);
+                        //         process.exit(1);
+                        //     } 
+                        //     else {
+                                console.log('return hash (',sReturnedHash,') original ', sHash);
+                                if (sReturnedHash !== sHash) {
+                                    var sError = 'getFile error with trial, sha1sum mismatch (' + sReturnedHash + ')' + sHash;
+                                    console.log(sError);
+                                    fCallbackAsync(sError);
+                                }
+                                else {
+                                    console.log('getFile matched hashes',sReturnedHash, sHash);
+                                    fs.unlink(oFile.file,function(oUnlinkError) {
+                                        if (oUnlinkError) {
+                                            console.log('getFile unable to unlink local file',oUnlinkError);
+                                            fCallbackAsync(oUnlinkError);
+                                        }
+                                        else {
+                                            var sPath = getPath(sHash);
+                                            s3.deleteFile(sPath, function(oError) {
+                                                if (oError) {
+                                                    console.log('getFile s3.deleteFile returned error',oError);
+                                                    fCallbackAsync(oError);
+                                                }            
+                                                else {    
+                                                    console.log('getFile s3.deleted File',sPath);            
+                                                    fCallbackAsync(null);
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+                        });                    
+                    }.bind(this), function(oError) {
                         if (oError) {
-                            console.error('getFile sha1sum Error', oError);
-                            fCallbackAsync(oError)
+                            console.log({action: 'getFiles error', error: oError});
+                            process.exit(1);
                         } 
                         else {
-                            var aHash = sSTDOut.split(' ');
-                            var sReturnedHash = aHash[0];
-                    // hashFile(sTempFile, function(oError, sReturnedHash) {
-                    //     if (oError) {
-                    //         console.error('getFile hashFile Error', oError);
-                    //         process.exit(1);
-                    //     } 
-                    //     else {
-                            console.log('return hash (',sReturnedHash,') original ', sHash);
-                            if (sReturnedHash !== sHash) {
-                                var sError = 'getFile error with trial, sha1sum mismatch (' + sReturnedHash + ')' + sHash;
-                                console.log(sError);
-                                fCallbackAsync(sError);
-                            }
-                            else {
-                                console.log('getFile matched hashes',sReturnedHash, sHash);
-                                fs.unlink(oFile,function(oUnlinkError) {
-                                    if (oUnlinkError) {
-                                        console.log('getFile unable to unlink local file',oUnlinkError);
-                                        fCallbackAsync(oUnlinkError);
-                                    }
-                                    else {
-                                        var sPath = getPath(sHash);
-                                        s3.deleteFile(sPath, function(oError) {
-                                            if (oError) {
-                                                console.log('getFile s3.deleteFile returned error',oError);
-                                                fCallbackAsync(oError);
-                                            }            
-                                            else {    
-                                                console.log('getFile s3.deleted File',sPath);            
-                                                fCallbackAsync(null);
-                                            }
-                                        });
-                                    }
-                                });
-                            }
+                            cb(oError, oTempFiles);
                         }
-                    });                    
-                }.bind(this), function(oError) {
-                    if (oError) {
-                        console.log({action: 'getFiles error', error: oError});
-                        process.exit(1);
-                    } 
-                    else {
-                        fCallback(oError, oTempFiles);
-                    }
-                }.bind(this));
+                    }.bind(this));
 
-            }
+                }
+            });
         });
     }
 
@@ -170,12 +178,18 @@ try {
                     }
                 });        
             }, 
-            function(oError, oFiles) {
+            function(oError, aFiles) {
                 if (oError) {
                     console.log('unable to upload random blobs',oError);
                     process.exit(1);
                 } 
                 else {
+                    console.log('aFiles',aFiles);
+                    var oFiles = {};
+                    for (var i in aFiles) {
+                        var oFile = aFiles[i];
+                        oFiles[oFile.hash] = getPath(oFile.file);
+                    }
                     console.log('oFiles',oFiles);
                     getFiles(oFiles, function(oError) {
                         if (oError) {
