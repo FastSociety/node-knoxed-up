@@ -6,13 +6,19 @@
     var oConfig     = require('/etc/cameo/.config.js');
     var args        = process.argv.slice(2);
 
-    var s3 = new KnoxedUp({
+    knoxConfig = {
         key:    oConfig.AMAZON.SERVER.ID,
         secret: oConfig.AMAZON.SERVER.SECRET,
         bucket: 'messel.test.cameo.tv',
         region: oConfig.AMAZON.REGION,
         port:   80
-    });
+    };
+
+    // see http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
+    if (oConfig.AMAZON.REGION !== undefined)
+        knoxConfig.region = oConfig.AMAZON.REGION;
+
+    var s3 = new KnoxedUp(knoxConfig);
 
     KnoxedUp.prototype.onProgress = function(oProgress) {
         process.stdout.write("\r" + oProgress.percent + '%');
