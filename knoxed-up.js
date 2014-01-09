@@ -18,6 +18,10 @@
                 port:   80
             };
 
+            // see http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
+            if (oConfig.AMAZON.REGION !== undefined)
+                this.oConfig.region = oConfig.AMAZON.REGION;           
+
             this.sOriginalBucket = oConfig.AMAZON.BUCKET;
 
             if (oConfig.AMAZON.LOCAL       !== undefined
@@ -94,6 +98,7 @@
             } else {
                 if (oLog.file_size !== undefined) {
                     oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
+                    oLog.bps = (oLog.file_size * 8) / (syslog.getTime(sTimer)/1000);
                 }
 
                 syslog.timeStop(sTimer, oLog);
@@ -542,6 +547,7 @@
             } else {
                 if (oLog.file_size !== undefined) {
                     oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
+                    oLog.bps = (oLog.file_size * 8) / (syslog.getTime(sTimer)/1000);                    
                 }
 
                 syslog.timeStop(sTimer, oLog);
