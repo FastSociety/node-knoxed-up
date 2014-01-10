@@ -139,12 +139,24 @@ try {
 
     var go = function(nBlobs,nBytes) {
         async.times(nBlobs, 
-            function (i, fCallbackAsync) {
+            function (i, fCallbackAsync) {               
+                var fDone = function(oError, oResult) {
+                    var alreadyCalled = false;
+                    if (!alreadyCalled) {
+                        alreadyCalled = true;
+                        fCallbackAsync(oError,oResult);
+                    }
+                    else {
+                        console.log('trying to re-use fCallbackAsync with oError,oResult',oError,oResult);
+                    }
+                }
+
             // many sd videos 500k-1MB range
-                genBlob(nBytes,function(oError,sHash) {
-                    if (oError) {
-                       console.log('genBlob error returned ',oError);
-                       fCallbackAsync(oError);
+                genBlob(nBytes,function(oError1,sHash) {
+                    if (oError1) {
+                       console.log('genBlob error returned ',oError1);
+                       console.log('about to call fCallbackAsyn for A i',i);
+                       return fDone(oError1,null);
                     }
                     else {
                         var sFrom = './' + sHash;
@@ -152,24 +164,35 @@ try {
                         console.log('go source',sFrom,'destination',sTo);
 
                         // rm file if it exists        
-                        s3.deleteFile(sTo, function(oError) {
-                            if (oError) {
-                               console.log('s3.deleteFile returned error',oError);
-                               fCallbackAsync(oError);
+                        s3.deleteFile(sTo, function(oError2) {
+                            if (oError2) {
+                               console.log('s3.deleteFile returned error',oError2);
+                               console.log('about to call fCallbackAsyn for B i',i);
+                               return fDone(oError2);
                             }
                             else {
                                 console.log('go about to call s3.putStream');
-                                s3.putStream(sFrom, sTo, {}, function(oError) {
-                                    if (oError) {
-                                        console.log('s3.putStream returned error',oError);
-                                        fCallbackAsync(oError);
+                                // putFile never worked
+                                // s3.putFile(sFrom, '', {}, function(oError3) {
+                                s3.putStream(sFrom, sTo, {}, function(oError3) {
+                                    if (oError3) {
+                                        console.log('s3.putStream returned error',oError3);
+                                        console.log('about to call fCallbackAsyn for C i',i);
+                                        return fDone(oError3);
                                     } 
                                     else {
                                         console.log('go s3.putStream succeeded sha1hash',sHash);
                                         // remove local file
                                         fs.unlink(sHash,function(oUnlinkError) {
-                                            console.log('go deleted local file',sHash);
-                                            fCallbackAsync(null, { file: sHash, hash: sHash });
+                                            if (oUnlinkError) {
+                                                console.log('error unlinking local file',sHash,oUnlinkError);
+                                                return fDone(oUnlinkError);
+                                            }
+                                            else {
+                                                console.log('go deleted local file',sHash);
+                                                console.log('about to call fCallbackAsyn for D i',i);
+                                                return fDone(null, { file: sHash, hash: sHash });
+                                            }
                                         });
                                     }
                                 });

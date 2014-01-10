@@ -9,6 +9,11 @@
     var syslog      = require('syslog-console').init('KnoxedUp');
 
     var KnoxedUp = function(oConfig) {
+        this.iMinimumDownloadBitrate    = 500000;
+        this.iMinimumUploadBitrate      = 500000;
+        // if transfers drop below threshold 3 times in a row do something
+        this.NBitRateFail = 3;
+
         if (oConfig.AMAZON !== undefined) {
             this.oConfig = {
                 key:    oConfig.AMAZON.SERVER.ID,
@@ -28,6 +33,9 @@
             &&  oConfig.AMAZON.LOCAL_PATH  !== undefined) {
                 KnoxedUp.setLocal(oConfig.AMAZON.LOCAL, oConfig.AMAZON.LOCAL_PATH);
             }
+            this.iMinimumDownloadBitrate    = oConfig.AMAZON.MINIMUMDOWNLOADBITRATE;
+            this.iMinimumUploadBitrate      = oConfig.AMAZON.MINIMUMUPLOADBITRATE;
+
         } else if (oConfig.key !== undefined) {
             this.oConfig         = oConfig;
             this.sOriginalBucket = oConfig.bucket;
@@ -63,35 +71,21 @@
 
         var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
         var iTimeoutIndex  = 0;
+        var iBitrateTimeoutIndex = 0;
+
+        var iBitrateFail = 0;
+        var iLengthTotal = null;
+        var iLength      = 0;
+        var sData        = '';
+        var iLengthPrev = 0;
 
         var sTimer = syslog.timeStart(oLog.action, oLog);
 
-        var iTimeout = setInterval(function() {
-            iTimeoutIndex++;
-
-            switch (true) {
-                // First Warning.
-                case iTimeoutIndex == aTimeoutLevels[0]:
-                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer) });
-                    break;
-
-                
-                case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.error({action: 'KnoxedUp.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
-                    // clearInterval(iTimeout);
-                    // fCallback(oLog.action + ' Timeout');
-                    break;
-
-                // Interim Warnings
-                case aTimeoutLevels.indexOf(iTimeoutIndex):
-                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bitRate: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
-                    break;
-            }
-        }, 1000);
-
+        var iTimeout,iBitrateTimeout;
 
         var fDone  = function(fDoneCallback, oError, oResponse, sData) {
             clearInterval(iTimeout);
+            clearInterval(iBitrateTimeout);
 
             if (oError) {
                 syslog.error(oLog);
@@ -108,6 +102,8 @@
         };
 
         var fRetry = function(sAction, oError, iNewMaxAttempts) {
+            clearInterval(iBitrateTimeout);
+
             iNewMaxAttempts = iNewMaxAttempts !== undefined ? iNewMaxAttempts : iMaxAttempts;
 
             if (iAttempts > iMaxAttempts) {
@@ -128,10 +124,56 @@
             }
         }.bind(this);
 
+        iTimeout = setInterval(function() {
+            iTimeoutIndex++;
+
+            switch (true) {
+                // First Warning.
+                case iTimeoutIndex == aTimeoutLevels[0]:
+                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
+                        oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer) });
+                    break;
+
+                
+                case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
+                    syslog.error({action: 'KnoxedUp.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), 
+                        oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
+                    // clearInterval(iTimeout);
+                    // fCallback(oLog.action + ' Timeout');
+                    break;
+
+                // Interim Warnings
+                case aTimeoutLevels.indexOf(iTimeoutIndex):
+                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
+                        oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
+                    break;
+            }
+        }.bind(this), 1000);
+
+        iBitrateTimeout = setInterval(function() {
+            iBitrateTimeoutIndex++;
+
+            // monitor transfer rate, retry if bitrate drops less than threshold
+            if (sCommand == 'get') {
+                var MinimumAcceptableBitrate = this.iMinimumDownloadBitrate;
+                var NDeltaBps = (iLength - iLengthPrev) * 8;
+                iLengthPrev = iLength;
+                if (NDeltaBps < MinimumAcceptableBitrate) {
+                    iBitrateFail++;
+                    if (iBitrateFail >= this.NBitRateFail) {
+                        syslog.warn({action: 'KnoxedUp._command.' + sCommand, bps: NDeltaBps, oLog: oLog });
+                        return fRetry('KnoxedUp._command.' + sCommand + '.bitRateTooLow', new Error('Minimum Acceptable Bitrate failed'));
+                    }
+                }
+                else {
+                    iBitrateFail = 0;
+                }
+            }
+
+
+        }.bind(this), 1000);
+
         var oRequest     = this.Client[sCommand](sFilename, oHeaders);
-        var iLengthTotal = null;
-        var iLength      = 0;
-        var sData        = '';
 
         oRequest.on('error', function(oError) {
             switch(oError.message) {
@@ -540,8 +582,12 @@
             callback: bHasCallback
         };
 
+        var iTimeout,iBitrateTimeout;
+
         var sTimer = syslog.timeStart(oLog.action, oLog);
         var fDone  = function(fFinishedCallback, oError, sTo) {
+            clearInterval(iTimeout);
+            clearInterval(iBitrateTimeout);
             if (oError) {
                 syslog.error(oLog);
             } else {
@@ -556,19 +602,79 @@
             fFinishedCallback(oError, sTo);
         };
 
+        var iBitrateFail = 0;
+        var iLength = 0;
+        var iLengthPrev = 0;
+        var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
+        var iTimeoutIndex = 0;
+        var iBitrateTimeoutIndex = 0;
+
+        iTimeout = setInterval(function() {
+            iTimeoutIndex++;
+
+            switch (true) {
+                // First Warning.
+                case iTimeoutIndex == aTimeoutLevels[0]:
+                    syslog.warn({action: 'KnoxedUp.putStream.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
+                        oLog: oLog, iLength: iLength, iLengthTotal: oLog.file_size, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer) });
+                    break;
+
+                
+                case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
+                    syslog.error({action: 'KnoxedUp.putStream.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), 
+                        oLog: oLog, iLength: iLength, iLengthTotal: oLog.file_size , bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
+                    // clearInterval(iTimeout);
+                    // fCallback(oLog.action + ' Timeout');
+                    break;
+
+                // Interim Warnings
+                case aTimeoutLevels.indexOf(iTimeoutIndex):
+                    syslog.warn({action: 'KnoxedUp.putStream.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
+                        oLog: oLog, iLength: iLength, iLengthTotal: oLog.file_size , bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
+                    break;
+            }
+        }.bind(this), 1000);
+
+
+        iBitrateTimeout = setInterval(function() {
+            iBitrateTimeoutIndex++;
+
+            // monitor transfer rate, retry if bitrate drops less than threshold
+            var MinimumAcceptableBitrate = this.iMinimumUploadBitrate;
+            var NDeltaBps = (iLength - iLengthPrev) * 8;
+            iLengthPrev = iLength;
+            if (NDeltaBps < MinimumAcceptableBitrate) {
+                iBitrateFail++;
+                if (iBitrateFail >= this.NBitRateFail) {
+                    syslog.warn({action: 'KnoxedUp.putStream', bps: NDeltaBps, oLog: oLog });
+                    clearInterval(iBitrateTimeout);
+                    var fOriginalCallback = fCallback;
+                    fCallback = function(oError,oReturn) { 
+                        syslog.warn({action: 'KnoxedUp.putStream', error: 'callback is being attempted to be called more than once',oError: oError, oReturn: oReturn });
+                    }
+                    return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
+                }
+            }
+            else {
+                iBitrateFail = 0;
+            }
+
+        }.bind(this), 1000);
+
+
         if (KnoxedUp.isLocal()) {
             var sToLocal = this.getLocalPath(sTo);
             fsX.mkdirP(path.dirname(sToLocal), 0777, function(oError) {
                 if (oError) {
                     syslog.error({action: 'KnoxedUp.putStream.Local.error', from: sFrom, local: sToLocal, error: oError});
-                    fCallback(oError);
+                    fDone(fCallback, oError);
                 } else {
                     fsX.copyFile(sFrom, sToLocal, function(oCopyError) {
                         if (oCopyError) {
                             syslog.error({action: 'KnoxedUp.putStream.Local.copy.error', from: sFrom, local: sToLocal, error: oCopyError});
-                            fCallback(oError);
+                            fDone(fCallback, fCallback, oError);
                         } else {
-                            fCallback(null, sTo);
+                            fDone(fCallback, null, sTo);
                         }
                     }.bind(this));
                 }
@@ -576,7 +682,7 @@
         } else {
             this._setSizeAndHashHeaders(sFrom, oHeaders, function(oError, oPreppedHeaders) {
                 if (oError) {
-                    fCallback(oError);
+                    fDone(fCallback,oError);
                 } else {
                     if (oPreppedHeaders['Content-Length'] !== undefined) {
                         oLog.file_size = oPreppedHeaders['Content-Length'];
@@ -618,6 +724,7 @@
                                 fDone(fCallback, oLog.error);
                             } else {
                                 syslog.warn(oLog);
+                                clearInterval(iBitrateTimeout);
                                 this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
                             }
                         } else {
@@ -626,7 +733,10 @@
                         }
                     }.bind(this));
 
-                    oRequest.on('progress', this.onProgress.bind(this));
+                    oRequest.on('progress', function(oProgress) {
+                        iLength = oProgress.written;
+                        this.onProgress(oProgress);
+                    }.bind(this));
                 }
             }.bind(this));
         }
