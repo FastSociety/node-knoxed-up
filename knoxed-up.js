@@ -582,7 +582,7 @@
             callback: bHasCallback
         };
 
-        var iTimeout,iBitrateTimeout;
+        var iTimeout, iBitrateTimeout;
 
         var sTimer = syslog.timeStart(oLog.action, oLog);
         var fDone  = function(fFinishedCallback, oError, sTo) {
@@ -613,24 +613,35 @@
             iTimeoutIndex++;
 
             switch (true) {
+                // Top
+                case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
+                    syslog.error({
+                        action: 'KnoxedUp.putStream.timeAlert',
+                        error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'),
+                        oLog: oLog,
+                        iLength: iLength,
+                        iLengthTotal: oLog.file_size ,
+                        bps: (iLength*8)/iTimeoutIndex,
+                        '__ms': syslog.getTime(sTimer)
+                    });
+                    clearInterval(iTimeout);
+                    /// KILLL MMEEEE!! (Not explicitly killing this upload here, but we've likely gone too far at this point)
+                    break;
+
                 // First Warning.
                 case iTimeoutIndex == aTimeoutLevels[0]:
-                    syslog.warn({action: 'KnoxedUp.putStream.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
-                        oLog: oLog, iLength: iLength, iLengthTotal: oLog.file_size, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer) });
-                    break;
-
-                
-                case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.error({action: 'KnoxedUp.putStream.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), 
-                        oLog: oLog, iLength: iLength, iLengthTotal: oLog.file_size , bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
-                    // clearInterval(iTimeout);
-                    // fCallback(oLog.action + ' Timeout');
-                    break;
-
+                    // Intentional fallthrough
                 // Interim Warnings
                 case aTimeoutLevels.indexOf(iTimeoutIndex):
-                    syslog.warn({action: 'KnoxedUp.putStream.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
-                        oLog: oLog, iLength: iLength, iLengthTotal: oLog.file_size , bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
+                    syslog.warn({
+                        action: 'KnoxedUp.putStream.timeAlert',
+                        warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds',
+                        oLog: oLog,
+                        iLength: iLength,
+                        iLengthTotal: oLog.file_size ,
+                        bps: (iLength*8)/iTimeoutIndex,
+                        '__ms': syslog.getTime(sTimer)
+                    });
                     break;
             }
         }.bind(this), 1000);
@@ -646,12 +657,20 @@
             if (NDeltaBps < MinimumAcceptableBitrate) {
                 iBitrateFail++;
                 if (iBitrateFail >= this.NBitRateFail) {
-                    syslog.warn({action: 'KnoxedUp.putStream', bps: NDeltaBps, oLog: oLog });
+                    oLog.action += 'bitrate.retry';
+                    oLog.bps = NDeltaBps;
+                    syslog.warn(oLog);
                     clearInterval(iBitrateTimeout);
+                    clearInterval(iTimeout);
                     var fOriginalCallback = fCallback;
-                    fCallback = function(oError,oReturn) { 
-                        syslog.warn({action: 'KnoxedUp.putStream', error: 'callback is being attempted to be called more than once',oError: oError, oReturn: oReturn });
-                    }
+                    fCallback = function(oError, oReturn) {
+                        syslog.warn({
+                            action: 'KnoxedUp.putStream.double_callback',
+                            error: 'callback is being attempted to be called more than once',
+                            oError: oError,
+                            oReturn: oReturn
+                        });
+                    };
                     return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
                 }
             }
@@ -672,7 +691,7 @@
                     fsX.copyFile(sFrom, sToLocal, function(oCopyError) {
                         if (oCopyError) {
                             syslog.error({action: 'KnoxedUp.putStream.Local.copy.error', from: sFrom, local: sToLocal, error: oCopyError});
-                            fDone(fCallback, fCallback, oError);
+                            fDone(fCallback, oCopyError);
                         } else {
                             fDone(fCallback, null, sTo);
                         }
