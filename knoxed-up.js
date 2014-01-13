@@ -646,12 +646,20 @@
             if (NDeltaBps < MinimumAcceptableBitrate) {
                 iBitrateFail++;
                 if (iBitrateFail >= this.NBitRateFail) {
-                    syslog.warn({action: 'KnoxedUp.putStream', bps: NDeltaBps, oLog: oLog });
+                    oLog.action += 'bitrate.retry';
+                    oLog.bps = NDeltaBps;
+                    syslog.warn(oLog);
                     clearInterval(iBitrateTimeout);
+                    clearInterval(iTimeout);
                     var fOriginalCallback = fCallback;
-                    fCallback = function(oError,oReturn) { 
-                        syslog.warn({action: 'KnoxedUp.putStream', error: 'callback is being attempted to be called more than once',oError: oError, oReturn: oReturn });
-                    }
+                    fCallback = function(oError, oReturn) {
+                        syslog.warn({
+                            action: 'KnoxedUp.putStream.double_callback',
+                            error: 'callback is being attempted to be called more than once',
+                            oError: oError,
+                            oReturn: oReturn
+                        });
+                    };
                     return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
                 }
             }
