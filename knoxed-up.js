@@ -102,6 +102,7 @@
         };
 
         var fRetry = function(sAction, oError, iNewMaxAttempts) {
+            clearInterval(iTimeout);
             clearInterval(iBitrateTimeout);
 
             iNewMaxAttempts = iNewMaxAttempts !== undefined ? iNewMaxAttempts : iMaxAttempts;
@@ -744,6 +745,7 @@
                                 fDone(fCallback, oLog.error);
                             } else {
                                 syslog.warn(oLog);
+                                clearInterval(iTimeout);
                                 clearInterval(iBitrateTimeout);
                                 this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
                             }
