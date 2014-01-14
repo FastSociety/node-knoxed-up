@@ -161,7 +161,8 @@
                 if (NDeltaBps < MinimumAcceptableBitrate) {
                     iBitrateFail++;
                     if (iBitrateFail >= this.NBitRateFail) {
-                        syslog.warn({action: 'KnoxedUp._command.' + sCommand, bps: NDeltaBps, oLog: oLog });
+                        oLog.action += 'bitrate.retry';
+                        syslog.warn({action: oLog.action, bps: NDeltaBps, oLog: oLog });
                         return fRetry('KnoxedUp._command.' + sCommand + '.bitRateTooLow', new Error('Minimum Acceptable Bitrate failed'));
                     }
                 }
