@@ -129,24 +129,22 @@
             iTimeoutIndex++;
 
             switch (true) {
-                // First Warning.
-                case iTimeoutIndex == aTimeoutLevels[0]:
-                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
-                        oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer) });
-                    break;
-
                 
                 case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
                     syslog.error({action: 'KnoxedUp.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), 
                         oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
-                    // clearInterval(iTimeout);
-                    // fCallback(oLog.action + ' Timeout');
                     break;
 
-                // Interim Warnings
-                case aTimeoutLevels.indexOf(iTimeoutIndex):
+                // first & interim warnings
+                case aTimeoutLevels.indexOf(iTimeoutIndex) >= 0:
                     syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
                         oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
+                    // if a del hasn't completed in 10seconds/first timeout retry somethings up...
+                    if (sCommand == 'del') {
+                        oLog.action += 'delTooSlow.retry';
+                        syslog.warn({action: oLog.action, oLog: oLog});
+                        return fRetry('KnoxedUp._command.' + sCommand + '.delTooSlow', new Error('Del action took way too long'));                        
+                    }
                     break;
             }
         }.bind(this), 1000);
@@ -630,11 +628,8 @@
                     /// KILLL MMEEEE!! (Not explicitly killing this upload here, but we've likely gone too far at this point)
                     break;
 
-                // First Warning.
-                case iTimeoutIndex == aTimeoutLevels[0]:
-                    // Intentional fallthrough
-                // Interim Warnings
-                case aTimeoutLevels.indexOf(iTimeoutIndex):
+                // first & interim warnings
+                case aTimeoutLevels.indexOf(iTimeoutIndex) >= 0:
                     syslog.warn({
                         action: 'KnoxedUp.putStream.timeAlert',
                         warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds',
