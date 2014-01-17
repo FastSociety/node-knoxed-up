@@ -141,7 +141,7 @@
                         oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
                     // if a del hasn't completed in 10seconds/first timeout retry somethings up...
                     if (sCommand == 'del') {
-                        oLog.action += 'delTooSlow.retry';
+                        oLog.action += '.tooSlow.retry';
                         syslog.warn({action: oLog.action, oLog: oLog});
                         return fRetry('KnoxedUp._command.' + sCommand + '.delTooSlow', new Error('Del action took way too long'));                        
                     }
@@ -160,7 +160,7 @@
                 if (NDeltaBps < MinimumAcceptableBitrate) {
                     iBitrateFail++;
                     if (iBitrateFail >= this.NBitRateFail) {
-                        oLog.action += 'bitrate.retry';
+                        oLog.action += '.bitrate.retry';
                         syslog.warn({action: oLog.action, bps: NDeltaBps, oLog: oLog });
                         return fRetry('KnoxedUp._command.' + sCommand + '.bitRateTooLow', new Error('Minimum Acceptable Bitrate failed'));
                     }
@@ -654,7 +654,7 @@
             if (NDeltaBps < MinimumAcceptableBitrate) {
                 iBitrateFail++;
                 if (iBitrateFail >= this.NBitRateFail) {
-                    oLog.action += 'bitrate.retry';
+                    oLog.action += '.bitrate.retry';
                     oLog.bps = NDeltaBps;
                     syslog.warn(oLog);
                     clearInterval(iBitrateTimeout);
