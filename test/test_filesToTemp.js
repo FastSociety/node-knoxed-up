@@ -24,6 +24,9 @@
         process.stdout.write("\r" + oProgress.percent + '%');
     }
 
+
+    var t1 = Date.now();
+
 try {
     var getPath = function(sHash) {
         return sHash.substr(0, 1) + '/' + sHash.substr(1, 1) + '/' + sHash.substr(2, 1) + '/' + sHash;
@@ -210,7 +213,7 @@ try {
                             process.exit(1);
                         }
                         else {
-                            console.log('getFiles successfully completed all blob tests');
+                            console.log('getFiles successfully completed all blob tests',Date.now() - t1);
                             process.exit(0);                        
                         }
                     });

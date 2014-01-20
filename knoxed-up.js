@@ -157,11 +157,12 @@
                 var MinimumAcceptableBitrate = this.iMinimumDownloadBitrate;
                 var NDeltaBps = (iLength - iLengthPrev) * 8;
                 iLengthPrev = iLength;
-                if (NDeltaBps < MinimumAcceptableBitrate) {
+                if (NDeltaBps < MinimumAcceptableBitrate && iLength != oLog.file_size) {
+                // if (NDeltaBps < MinimumAcceptableBitrate) {
                     iBitrateFail++;
                     if (iBitrateFail >= this.NBitRateFail) {
                         oLog.action += '.bitrate.retry';
-                        syslog.warn({action: oLog.action, bps: NDeltaBps, oLog: oLog });
+                        syslog.warn({action: oLog.action, bps: NDeltaBps, meanbps: (iLength*8)/iTimeoutIndex, bytesTransferred:iLength, oLog: oLog });
                         return fRetry('KnoxedUp._command.' + sCommand + '.bitRateTooLow', new Error('Minimum Acceptable Bitrate failed'));
                     }
                 }
