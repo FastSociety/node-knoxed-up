@@ -24,6 +24,9 @@
         process.stdout.write("\r" + oProgress.percent + '%');
     }
 
+
+    var t1 = Date.now();
+
 try {
     var getPath = function(sHash) {
         return sHash.substr(0, 1) + '/' + sHash.substr(1, 1) + '/' + sHash.substr(2, 1) + '/' + sHash;
@@ -163,37 +166,27 @@ try {
                         var sTo = getPath(sHash);   
                         console.log('go source',sFrom,'destination',sTo);
 
-                        // rm file if it exists        
-                        s3.deleteFile(sTo, function(oError2) {
-                            if (oError2) {
-                               console.log('s3.deleteFile returned error',oError2);
-                               console.log('about to call fCallbackAsyn for B i',i);
-                               return fDone(oError2);
-                            }
+                        console.log('go about to call s3.putStream');
+                        // putFile never worked
+                        // s3.putFile(sFrom, '', {}, function(oError3) {
+                        s3.putStream(sFrom, sTo, {}, function(oError3) {
+                            if (oError3) {
+                                console.log('s3.putStream returned error',oError3);
+                                console.log('about to call fCallbackAsyn for C i',i);
+                                return fDone(oError3);
+                            } 
                             else {
-                                console.log('go about to call s3.putStream');
-                                // putFile never worked
-                                // s3.putFile(sFrom, '', {}, function(oError3) {
-                                s3.putStream(sFrom, sTo, {}, function(oError3) {
-                                    if (oError3) {
-                                        console.log('s3.putStream returned error',oError3);
-                                        console.log('about to call fCallbackAsyn for C i',i);
-                                        return fDone(oError3);
-                                    } 
+                                console.log('go s3.putStream succeeded sha1hash',sHash);
+                                // remove local file
+                                fs.unlink(sHash,function(oUnlinkError) {
+                                    if (oUnlinkError) {
+                                        console.log('error unlinking local file',sHash,oUnlinkError);
+                                        return fDone(oUnlinkError);
+                                    }
                                     else {
-                                        console.log('go s3.putStream succeeded sha1hash',sHash);
-                                        // remove local file
-                                        fs.unlink(sHash,function(oUnlinkError) {
-                                            if (oUnlinkError) {
-                                                console.log('error unlinking local file',sHash,oUnlinkError);
-                                                return fDone(oUnlinkError);
-                                            }
-                                            else {
-                                                console.log('go deleted local file',sHash);
-                                                console.log('about to call fCallbackAsyn for D i',i);
-                                                return fDone(null, { file: sHash, hash: sHash });
-                                            }
-                                        });
+                                        console.log('go deleted local file',sHash);
+                                        console.log('about to call fCallbackAsyn for D i',i);
+                                        return fDone(null, { file: sHash, hash: sHash });
                                     }
                                 });
                             }
@@ -220,7 +213,7 @@ try {
                             process.exit(1);
                         }
                         else {
-                            console.log('getFiles successfully completed all blob tests');
+                            console.log('getFiles successfully completed all blob tests',Date.now() - t1);
                             process.exit(0);                        
                         }
                     });
