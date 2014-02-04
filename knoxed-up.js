@@ -269,14 +269,11 @@
     KnoxedUp.prototype.getFile = function (sFilename, sToFile, sType, fCallback) {
         syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
 
-        var sTimer   = syslog.timeStart('KnoxedUp.getFile');
-        var bError   = false;
-        var bClosed  = false;
-        var oHeaders = {};
-        var oToFile  = fs.createWriteStream(sToFile, {
-            flags:    'w',
-            encoding: sType
-        });
+        var sTimer      = syslog.timeStart('KnoxedUp.getFile');
+        var bError      = false;
+        var bClosed     = false;
+        var oHeaders    = {};
+        var iFileHandle = null;
 
         var fDone = function(sFile) {
             syslog.timeStop(sTimer, {input: sFilename, output: sToFile, headers: oHeaders});
@@ -284,29 +281,42 @@
         };
 
         var fCheck = function(oError, sFile) {
-            if (oError) {
-                syslog.error({action: sTimer + '.error', input: sFilename, headers: oHeaders, error: oError});
-                fCallback(oError);
-            } else if (oHeaders['x-amz-meta-sha1'] !== undefined) {
-                fsX.hashFile(sToFile, function(oError, sHash) {
-                    if (oError) {
-                        syslog.error({action: sTimer + '.hash.error', input: sFilename, headers: oHeaders, error: oError});
-                        fCallback(oError);
-                    } else {
-                        if (oHeaders['x-amz-meta-sha1'] != sHash) {
-                            syslog.error({action: sTimer + '.hash.mismatch.error', input: sFilename, headers: oHeaders, hash: sHash, error: new Error('Hash Mismatch')});
+            fsX.unlock(sFile, function() {
+                if (oError) {
+                    syslog.error({action: sTimer + '.error', input: sFilename, output: sFile, headers: oHeaders, error: oError});
+                    fCallback(oError);
+                } else if (oHeaders['x-amz-meta-sha1'] !== undefined) {
+                    fsX.hashFile(sToFile, function(oError, sHash) {
+                        if (oError) {
+                            syslog.error({action: sTimer + '.hash.error', input: sFilename, output: sFile, headers: oHeaders, error: oError});
                             fCallback(oError);
                         } else {
-                            fDone(sFile);
+                            if (oHeaders['x-amz-meta-sha1'] != sHash) {
+                                syslog.error({action: sTimer + '.hash.mismatch.error', input: sFilename, output: sFile, headers: oHeaders, hash: sHash, error: new Error('Hash Mismatch')});
+                                fCallback(oError);
+                            } else {
+                                fDone(sFile);
+                            }
                         }
-                    }
-                });
-            } else {
-                fDone(sFile);
-            }
+                    });
+                } else {
+                    fDone(sFile);
+                }
+            });
         };
 
-        oToFile.on('open', function(fd) {
+        var oResponse;
+
+        fsX.writeLock(sToFile, {retries: 30, wait: 1000}, function(oLockError) {
+            if (oLockError) {
+                return fCheck(oLockError);
+            }
+
+            var oToFile  = fs.createWriteStream(sToFile, {
+                flags:    'w',
+                encoding: sType
+            });
+
             oToFile.on('error', function(oError) {
                 bError = true;
                 syslog.error({action: sTimer + '.write.error', input: sFilename, message: 'failed to open file for writing: (' + sToFile + ')', error: oError});
@@ -321,11 +331,12 @@
                 }
             });
 
-            var oRequest = this._get(sFilename, sType, {}, function(oError, oResponse, sData, iRetries) {
+            var oRequest = this._get(sFilename, sType, {}, function(oError, oS3Response, sData, iRetries) {
+                oResponse = oS3Response;
                 if (oResponse) {
                     oHeaders = oResponse.headers;
                 }
-                
+
                 syslog.debug({action: 'KnoxedUp.getFile.got'});
                 if (oError) {
                     syslog.error({action: sTimer + '.error', input: sFilename, error: oError});
@@ -365,7 +376,8 @@
                 }
             });
 
-            oRequest.on('response', function(oResponse) {
+            oRequest.on('response', function(oS3Response) {
+                oResponse = oS3Response;
                 oHeaders = oResponse.headers;
                 syslog.debug({action: 'KnoxedUp.getFile.response'});
 
@@ -395,10 +407,17 @@
 
     KnoxedUp.prototype._setSizeAndHashHeaders = function (sFile, oHeaders, fCallback) {
         //syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders', file: sFile, headers: oHeaders});
-        async.parallel({
-            stat: function(fAsyncCallback) { fs.stat(            sFile, fAsyncCallback); },
-            md5:  function(fAsyncCallback) { fsX.md5FileToBase64(sFile, fAsyncCallback); },
-            sha1: function(fAsyncCallback) { fsX.hashFile(       sFile, fAsyncCallback); }
+        var oLockOpts = {
+            retries:    300,
+            wait:       100
+        };
+
+        async.auto({
+            lock:                           function(fAsyncCallback) { fsX.readLock(sFile, oLockOpts, fAsyncCallback)},
+            stat:   ['lock',                function(fAsyncCallback) { fs.stat(            sFile, fAsyncCallback);   }],
+            md5:    ['lock',                function(fAsyncCallback) { fsX.md5FileToBase64(sFile, fAsyncCallback);   }],
+            sha1:   ['lock',                function(fAsyncCallback) { fsX.hashFile(       sFile, fAsyncCallback);   }],
+            unlock: ['stat', 'md5', 'sha1', function(fAsyncCallback) { fsX.unlock(sFile, fAsyncCallback)             }]
         }, function(oError, oResults) {
             if (oError) {
                 syslog.error({action: 'KnoxedUp._setSizeAndHashHeaders.error', file: sFile, headers: oHeaders, error: oError});
@@ -589,18 +608,20 @@
         var fDone  = function(fFinishedCallback, oError, sTo) {
             clearInterval(iTimeout);
             clearInterval(iBitrateTimeout);
-            if (oError) {
-                syslog.error(oLog);
-            } else {
-                if (oLog.file_size !== undefined) {
-                    oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
-                    oLog.bps = (oLog.file_size * 8) / (syslog.getTime(sTimer)/1000);                    
+            fsX.unlock(sFrom, function(oLockError) {
+                if (oError) {
+                    syslog.error(oLog);
+                } else {
+                    if (oLog.file_size !== undefined) {
+                        oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
+                        oLog.bps = (oLog.file_size * 8) / (syslog.getTime(sTimer)/1000);
+                    }
+
+                    syslog.timeStop(sTimer, oLog);
                 }
 
-                syslog.timeStop(sTimer, oLog);
-            }
-
-            fFinishedCallback(oError, sTo);
+                fFinishedCallback(oError, sTo);
+            });
         };
 
         var iBitrateFail = 0;
@@ -705,55 +726,61 @@
                         oLog.file_size = oPreppedHeaders['Content-Length'];
                     }
 
-                    var oStream  = fs.createReadStream(sFrom);
-
-                    oStream.on('error', function(oError) {
-                        oStream.destroy();
-
-                        oLog.error = new Error(oError);
-                        fDone(fCallback, oLog.error);
-                    });
-
-                    var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
-                        oStream.destroy();
-                        oLog.status = -1;
-                        if (oResponse) {
-                            oLog.status = oResponse.statusCode;
+                    fsX.readLock(sFrom, {retries: 300, wait: 100}, function(oLockError) {
+                        if (oLockError) {
+                            return fDone(fCallback, oLockError);
                         }
 
-                        if (oError) {
-                            if (iRetries > 3) {
-                                oLog.action += '.request.hang_up.retry.max';
-                                oLog.error   = oError;
-                                syslog.error(oLog);
-                                fDone(fCallback, oLog.error);
-                            } else {
-                                oLog.action += '.request.hang_up.retry';
-                                oLog.error   = (util.isError(oError)) ? new Error(oError.message) : oError;
-                                syslog.warn(oLog);
-                                this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
-                            }
-                        } else if(oResponse.statusCode >= 400) {
-                            oLog.error   = new Error('S3 Error Code ' + oResponse.statusCode);
-                            oLog.action += '.request.500.retry';
-                            if (iRetries > 3) {
-                                oLog.action += '.max';
-                                fDone(fCallback, oLog.error);
-                            } else {
-                                syslog.warn(oLog);
-                                clearInterval(iTimeout);
-                                clearInterval(iBitrateTimeout);
-                                this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
-                            }
-                        } else {
-                            oLog.action += '.done';
-                            fDone(fCallback, null, sTo);
-                        }
-                    }.bind(this));
+                        var oStream  = fs.createReadStream(sFrom);
 
-                    oRequest.on('progress', function(oProgress) {
-                        iLength = oProgress.written;
-                        this.onProgress(oProgress);
+                        oStream.on('error', function(oError) {
+                            oStream.destroy();
+
+                            oLog.error = new Error(oError);
+                            fDone(fCallback, oLog.error);
+                        });
+
+                        var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
+                            oStream.destroy();
+                            oLog.status = -1;
+                            if (oResponse) {
+                                oLog.status = oResponse.statusCode;
+                            }
+
+                            if (oError) {
+                                if (iRetries > 3) {
+                                    oLog.action += '.request.hang_up.retry.max';
+                                    oLog.error   = oError;
+                                    syslog.error(oLog);
+                                    fDone(fCallback, oLog.error);
+                                } else {
+                                    oLog.action += '.request.hang_up.retry';
+                                    oLog.error   = (util.isError(oError)) ? new Error(oError.message) : oError;
+                                    syslog.warn(oLog);
+                                    this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
+                                }
+                            } else if(oResponse.statusCode >= 400) {
+                                oLog.error   = new Error('S3 Error Code ' + oResponse.statusCode);
+                                oLog.action += '.request.500.retry';
+                                if (iRetries > 3) {
+                                    oLog.action += '.max';
+                                    fDone(fCallback, oLog.error);
+                                } else {
+                                    syslog.warn(oLog);
+                                    clearInterval(iTimeout);
+                                    clearInterval(iBitrateTimeout);
+                                    this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
+                                }
+                            } else {
+                                oLog.action += '.done';
+                                fDone(fCallback, null, sTo);
+                            }
+                        }.bind(this));
+
+                        oRequest.on('progress', function(oProgress) {
+                            iLength = oProgress.written;
+                            this.onProgress(oProgress);
+                        }.bind(this));
                     }.bind(this));
                 }
             }.bind(this));
@@ -798,10 +825,10 @@
 
     /**
      *
-     * @param {String}   sFrom     Path of File to Move
-     * @param {String}   sTo       Destination Path of File
-     * @param {Object}   oHeaders
-     * @param {Function} fCallback
+     * @param {String}            sFrom     Path of File to Move
+     * @param {String}            sTo       Destination Path of File
+     * @param {Object|Function}   oHeaders
+     * @param {Function}         [fCallback]
      */
     KnoxedUp.prototype.copyFile = function(sFrom, sTo, oHeaders, fCallback) {
         if (typeof oHeaders == 'function') {
@@ -1008,7 +1035,7 @@
      * @param {String}   sType     Binary or (?)
      * @param {String}   sCheckHash
      * @param {String|Function}   [sExtension]
-     * @param {Function} fCallback - Path of Temp File
+     * @param {Function} [fCallback] - Path of Temp File
      */
     KnoxedUp.prototype.toTemp = function(sFile, sType, sCheckHash, sExtension, fCallback) {
         if (typeof sExtension == 'function') {
@@ -1048,11 +1075,18 @@
         var sTimer = syslog.timeStart('KnoxedUp._fromTemp');
         sExtension = KnoxedUp._dotExtension(sExtension);
 
+        var oLockOpts = {
+            retries:    300,
+            wait:       100
+        };
+
         async.auto({
-            hash:           function(fAsyncCallback, oResults) { fsX.hashFile(sTempFile, fAsyncCallback) },
-            check: ['hash', function(fAsyncCallback, oResults) { this._checkHash (oResults.hash, sCheckHash, fAsyncCallback) }.bind(this)],
-            copy:  ['hash', function(fAsyncCallback, oResults) { fsX.copyFile(sTempFile,  fsX.getTmpSync() + oResults.hash + sExtension, fAsyncCallback) }],
-            chmod: ['copy', function(fAsyncCallback, oResults) { fs.chmod(oResults.copy, 0777, fAsyncCallback) }]
+            lock:             function(fAsyncCallback)           { fsX.readlock(sTempFile, oLockOpts, fAsyncCallback)},
+            hash:   ['lock',  function(fAsyncCallback, oResults) { fsX.hashFile(sTempFile, fAsyncCallback)       }],
+            check:  ['hash',  function(fAsyncCallback, oResults) { this._checkHash (oResults.hash, sCheckHash, fAsyncCallback) }.bind(this)],
+            copy:   ['hash',  function(fAsyncCallback, oResults) { fsX.copyFile(sTempFile,  fsX.getTmpSync() + oResults.hash + sExtension, fAsyncCallback) }],
+            chmod:  ['copy',  function(fAsyncCallback, oResults) { fs.chmod(oResults.copy, 0777, fAsyncCallback) }],
+            unlock: ['chmod', function(fAsyncCallback)           { fsX.unlock(sTempFile, fAsyncCallback)         }]
         }, function(oError, oResults) {
             if (oError) {
                 syslog.error({action: sTimer + '.error', input: sTempFile, error: oError});
@@ -1087,7 +1121,7 @@
     KnoxedUp.prototype._getCachedFile = function(sHash, sExtension, fCallback) {
         return fCallback(null, null);
 
-        //syslog.debug({action: 'KnoxedUp._getCachedFile', hash: sHash, extension: sExtension});
+        syslog.debug({action: 'KnoxedUp._getCachedFile', hash: sHash, extension: sExtension});
 
         sExtension = KnoxedUp._dotExtension(sExtension);
 
@@ -1095,17 +1129,21 @@
         var sDestination = path.join(fsX.getTmpSync(), sHash + sExtension);
         fs.exists(sCachedFile, function(bExists) {
             if (bExists) {
+                syslog.debug({action: 'KnoxedUp._getCachedFile.exists'});
                 fsX.hashFile(sCachedFile, function(oHashError, sFileHash) {
                     if (oHashError) {
+                        syslog.debug({action: 'KnoxedUp._getCachedFile.hash.error', error: oHashError});
                         fCallback(oHashError);
                     } else if (sHash == sFileHash) {
-                        //syslog.debug({action: 'KnoxedUp._getCachedFile.found', file: sDestination});
-                        fCallback(null, sCachedFile, sFileHash);
+                        syslog.debug({action: 'KnoxedUp._getCachedFile.match', cache: sCachedFile, file: sDestination});
+                        fsX.copyFile(sCachedFile, sDestination, fCallback);
                     } else {
+                        syslog.debug({action: 'KnoxedUp._getCachedFile.hash.mismatch'});
                         fCallback(null, null);
                     }
                 }.bind(this));
             } else {
+                syslog.debug({action: 'KnoxedUp._getCachedFile.gone'});
                 fCallback(null, null);
             }
         }.bind(this));
@@ -1118,7 +1156,8 @@
      * @private
      */
     KnoxedUp.prototype._cacheFile = function(sFile, fCallback) {
-        return fCallback(null);
+        return fCallback(null, null);
+
         var sTimer = syslog.timeStart('KnoxedUp._cacheFile');
 
         fsX.mkdirP(KnoxedUp._getTmpCache(), 0777, function(oError, sPath) {
