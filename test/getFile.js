@@ -25,7 +25,7 @@
         seventh:function(fAsyncCallback, oResults) { S3.getFile(sPath, './gotFile', 'binary', fAsyncCallback); },
         eighth: function(fAsyncCallback, oResults) { S3.getFile(sPath, './gotFile', 'binary', fAsyncCallback); },
         ninth:  function(fAsyncCallback, oResults) { S3.getFile(sPath, './gotFile', 'binary', fAsyncCallback); },
-        tenth:  function(fAsyncCallback, oResults) { S3.getFile(sPath, './gotFile', 'binary', fAsyncCallback); },
+        tenth:  function(fAsyncCallback, oResults) { S3.getFile(sPath, './gotFile', 'binary', fAsyncCallback); }
     }, function(oError, oResults) {
         for (var i in oResults) {
             if (oResults[i] != './gotFile') {
@@ -34,5 +34,11 @@
             }
         }
 
-        console.log('GOOD', oResults);
+        fsX.hashFile('./gotFile', function(oError, sHash) {
+            if (sHash != sFileHash) {
+                console.log('FAIL', sHash);
+            } else {
+                console.log('GOOD', oResults);
+            }
+        });
     });

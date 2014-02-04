@@ -277,8 +277,9 @@
 
         var fDone = function(sFile) {
             syslog.timeStop(sTimer, {input: sFilename, output: sToFile, headers: oHeaders});
+
             fCallback(null, sToFile);
-        };
+        }.bind(this);
 
         var fCheck = function(oError, sFile) {
             fsX.unlock(sFile, function() {
@@ -290,109 +291,121 @@
                         if (oError) {
                             syslog.error({action: sTimer + '.hash.error', input: sFilename, output: sFile, headers: oHeaders, error: oError});
                             fCallback(oError);
-                        } else {
-                            if (oHeaders['x-amz-meta-sha1'] != sHash) {
-                                syslog.error({action: sTimer + '.hash.mismatch.error', input: sFilename, output: sFile, headers: oHeaders, hash: sHash, error: new Error('Hash Mismatch')});
-                                fCallback(oError);
-                            } else {
+                        } else if (oHeaders['x-amz-meta-sha1'] != sHash) {
+                            syslog.error({action: sTimer + '.hash.mismatch.error', input: sFilename, output: sFile, headers: oHeaders, hash: sHash, error: new Error('Hash Mismatch')});
+                            fCallback(oError);
+                        } else if (KnoxedUp.isLocal()) {
+                            this.localize(sToFile, sFilename, function() {
                                 fDone(sFile);
-                            }
+                            });
+                        } else {
+                            fDone(sFile);
                         }
+                    }.bind(this));
+                } else if (KnoxedUp.isLocal()) {
+                    this.localize(sToFile, sFilename, function() {
+                        fDone(sFile);
                     });
                 } else {
                     fDone(sFile);
                 }
+            }.bind(this));
+        }.bind(this);
+
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFilename)) {
+            fsX.copyFile(this.getLocalPath(sFilename), sToFile, function(oError, sFile) {
+                fDone(sFile);
             });
-        };
+        } else {
+            var oResponse;
 
-        var oResponse;
-
-        fsX.writeLock(sToFile, {retries: 30, wait: 1000}, function(oLockError) {
-            if (oLockError) {
-                return fCheck(oLockError);
-            }
-
-            var oToFile  = fs.createWriteStream(sToFile, {
-                flags:    'w',
-                encoding: sType
-            });
-
-            oToFile.on('error', function(oError) {
-                bError = true;
-                syslog.error({action: sTimer + '.write.error', input: sFilename, message: 'failed to open file for writing: (' + sToFile + ')', error: oError});
-                fCheck(oError);
-            });
-
-            oToFile.on('close', function() {
-                bClosed = true;
-                if (!bError) {
-                    syslog.debug({action: 'KnoxedUp.getFile.write.done', output: sToFile});
-                    fCheck(null, sToFile);
-                }
-            });
-
-            var oRequest = this._get(sFilename, sType, {}, function(oError, oS3Response, sData, iRetries) {
-                oResponse = oS3Response;
-                if (oResponse) {
-                    oHeaders = oResponse.headers;
+            fsX.writeLock(sToFile, {retries: 30, wait: 1000}, function(oLockError) {
+                if (oLockError) {
+                    return fCheck(oLockError);
                 }
 
-                syslog.debug({action: 'KnoxedUp.getFile.got'});
-                if (oError) {
-                    syslog.error({action: sTimer + '.error', input: sFilename, error: oError});
+                var oToFile  = fs.createWriteStream(sToFile, {
+                    flags:    'w',
+                    //encoding: sType
+                });
+
+                oToFile.on('error', function(oError) {
                     bError = true;
-                    oToFile.end();
+                    syslog.error({action: sTimer + '.write.error', input: sFilename, message: 'failed to open file for writing: (' + sToFile + ')', error: oError});
+                    fCheck(oError);
+                });
 
-                    fs.exists(sToFile, function(bExists) {
-                        if (bExists) {
-                            fs.unlink(sToFile, function() {
-                                syslog.debug({action: 'KnoxedUp.getFile.unlink.done'});
-                                fCheck(oError);
-                            });
-                        } else {
-                            syslog.debug({action: 'KnoxedUp.getFile.done'});
-                            fCheck(oError);
-                        }
-                    });
-                } else if (!bClosed) {
-                    syslog.debug({action: 'KnoxedUp.getFile.request.end'});
+                oToFile.on('close', function() {
+                    bClosed = true;
+                    if (!bError) {
+                        syslog.debug({action: 'KnoxedUp.getFile.write.done', output: sToFile});
+                        fCheck(null, sToFile);
+                    }
+                });
 
-                    // Weird case where file may be incomplete
-                    // if (iRetries) { // this was always true
-                    if (iRetries > 1) {
-                        syslog.debug({action: 'KnoxedUp.getFile.request.end.retried'});
+                var oRequest = this._get(sFilename, sType, {}, function(oError, oS3Response, sData, iRetries) {
+                    oResponse = oS3Response;
+                    if (oResponse) {
+                        oHeaders = oResponse.headers;
+                    }
+
+                    syslog.debug({action: 'KnoxedUp.getFile.got'});
+                    if (oError) {
+                        syslog.error({action: sTimer + '.error', input: sFilename, error: oError});
                         bError = true;
                         oToFile.end();
 
-                        fs.writeFile(sToFile, sData, sType, function(oWriteError) {
-                            if (oWriteError) {
-                                syslog.error({action: sTimer + '.writeFile.error', input: sFilename, error: oWriteError});
-                                fCheck(oWriteError);
+                        fs.exists(sToFile, function(bExists) {
+                            if (bExists) {
+                                fs.unlink(sToFile, function() {
+                                    syslog.debug({action: 'KnoxedUp.getFile.unlink.done'});
+                                    fCheck(oError);
+                                });
                             } else {
-                                fCheck(null, sToFile);
+                                syslog.debug({action: 'KnoxedUp.getFile.done'});
+                                fCheck(oError);
                             }
-                        })
-                    }
-                }
-            });
+                        });
+                    } else if (!bClosed) {
+                        syslog.debug({action: 'KnoxedUp.getFile.request.end'});
 
-            oRequest.on('response', function(oS3Response) {
-                oResponse = oS3Response;
-                oHeaders = oResponse.headers;
-                syslog.debug({action: 'KnoxedUp.getFile.response'});
+                        // Weird case where file may be incomplete
+                        // if (iRetries) { // this was always true
+                        if (iRetries > 1) {
+                            syslog.debug({action: 'KnoxedUp.getFile.request.end.retried'});
+                            bError = true;
+                            oToFile.end();
 
-                oResponse.on('data', function(sChunk) {
-                    if (!bError) {
-                        oToFile.write(sChunk, sType);
+                            fs.writeFile(sToFile, sData, sType, function(oWriteError) {
+                                if (oWriteError) {
+                                    syslog.error({action: sTimer + '.writeFile.error', input: sFilename, error: oWriteError});
+                                    fCheck(oWriteError);
+                                } else {
+                                    fCheck(null, sToFile);
+                                }
+                            })
+                        }
                     }
                 });
 
-                oResponse.on('end', function() {
-                    //syslog.debug({action: 'KnoxedUp.getFile.response.end'});
-                    oToFile.end();
+                oRequest.on('response', function(oS3Response) {
+                    oResponse = oS3Response;
+                    oHeaders = oResponse.headers;
+                    syslog.debug({action: 'KnoxedUp.getFile.response'});
+
+                    oResponse.on('data', function(sChunk) {
+                        if (!bError) {
+                            oToFile.write(sChunk, sType);
+                        }
+                    });
+
+                    oResponse.on('end', function() {
+                        //syslog.debug({action: 'KnoxedUp.getFile.response.end'});
+                        oToFile.end();
+                    });
                 });
-            });
-        }.bind(this));
+            }.bind(this));
+        }
     };
 
     KnoxedUp.prototype.putFile = function (sFilename, sType, oHeaders, fCallback) {
@@ -710,22 +723,9 @@
 
 
         if (KnoxedUp.isLocal()) {
-            var sToLocal = this.getLocalPath(sTo);
-            fsX.mkdirP(path.dirname(sToLocal), 0777, function(oError) {
-                if (oError) {
-                    syslog.error({action: 'KnoxedUp.putStream.Local.error', from: sFrom, local: sToLocal, error: oError});
-                    fDone(fCallback, oError);
-                } else {
-                    fsX.copyFile(sFrom, sToLocal, function(oCopyError) {
-                        if (oCopyError) {
-                            syslog.error({action: 'KnoxedUp.putStream.Local.copy.error', from: sFrom, local: sToLocal, error: oCopyError});
-                            fDone(fCallback, oCopyError);
-                        } else {
-                            fDone(fCallback, null, sTo);
-                        }
-                    }.bind(this));
-                }
-            }.bind(this));
+            this.localize(sFrom, sTo, function() {
+                fDone(fCallback, null, sTo);
+            });
         } else {
             this._setSizeAndHashHeaders(sFrom, oHeaders, function(oError, oPreppedHeaders) {
                 if (oError) {
@@ -832,6 +832,25 @@
         }.bind(this));
     };
 
+    KnoxedUp.prototype.localize = function(sFrom, sTo, fCallback) {
+        var sToLocal = this.getLocalPath(sTo);
+        fsX.mkdirP(path.dirname(sToLocal), 0777, function(oError) {
+            if (oError) {
+                syslog.error({action: 'KnoxedUp.putStream.Local.error', from: sFrom, local: sToLocal, error: oError});
+                fCallback(oError)
+            } else {
+                fsX.copyFile(sFrom, sToLocal, function(oCopyError) {
+                    if (oCopyError) {
+                        syslog.error({action: 'KnoxedUp.putStream.Local.copy.error', from: sFrom, local: sToLocal, error: oCopyError});
+                        fCallback(oCopyError);
+                    } else {
+                        fCallback(null, sTo);
+                    }
+                });
+            }
+        });
+    };
+
     /**
      *
      * @param {String}            sFrom     Path of File to Move
@@ -848,11 +867,7 @@
         fCallback = typeof fCallback == 'function' ? fCallback : function() {};
 
         if (KnoxedUp.isLocal() && this._localFileExistsSync(sFrom)) {
-            var sFromLocal = this.getLocalPath(sFrom);
-            var sToLocal   = this.getLocalPath(sTo);
-            fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
-                fsX.copyFile(sFromLocal, sToLocal, fCallback);
-            }.bind(this));
+            this.localize(sFrom, sTo, fCallback);
         } else {
             var bHasHeaders = false;
             for (var i in oHeaders) {
@@ -922,12 +937,7 @@
 
         var sLocalPath = path.join(KnoxedUp.sPath, this.oConfig.bucket, sFrom);
         if (KnoxedUp.isLocal() && this._localFileExistsSync(sLocalPath)) {
-            var sFromLocal = sLocalPath;
-            var sToLocal   = path.join(KnoxedUp.sPath, sBucket, sTo);
-
-            fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
-                fsX.copyFile(sFromLocal, sToLocal, fCallback);
-            }.bind(this));
+            this.localize(sLocalPath, path.join(KnoxedUp.sPath, sBucket, sTo), fCallback);
         } else {
             var oOptions = {
                 'Content-Length': '0',
@@ -1210,15 +1220,16 @@
                 syslog.error({action: sTimer + '.error', input: sTempFile, error: oError, hash: sCheckHash, results: oResults});
                 fCallback(oError);
             } else {
+                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.move});
+
                 if (KnoxedUp.isLocal()) {
-                    var sToLocal = this.getLocalPath(sFile);
-                    fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
-                        fsX.copyFile(oResults.move.path, sToLocal, fCallback);
+                    this.localize(oResults.move.path, sFile, function() {
+                        fCallback(null, oResults.move.path, oResults.move.hash);
                     });
+                } else {
+                    fCallback(null, oResults.move.path, oResults.move.hash);
                 }
 
-                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.move});
-                fCallback(null, oResults.move.path, oResults.move.hash);
             }
         }.bind(this));
     };
