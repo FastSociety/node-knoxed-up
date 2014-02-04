@@ -56,8 +56,8 @@
      * @private
      */
     KnoxedUp.prototype._command = function (sCommand, sFilename, sType, oHeaders, fCallback, iAttempts, iMaxAttempts) {
-        var iAttempts    = iAttempts    !== undefined ? iAttempts    : 1;
-        var iMaxAttempts = iMaxAttempts !== undefined ? iMaxAttempts : 10;
+            iAttempts    = iAttempts    !== undefined ? iAttempts    : 1;
+            iMaxAttempts = iMaxAttempts !== undefined ? iMaxAttempts : 10;
         var bHasCallback = typeof fCallback == 'function';
 
         var oLog = {
@@ -554,6 +554,15 @@
     /**
      *
      * @param {String} sFile       Path to file
+     * @return boolean
+     */
+    KnoxedUp.prototype._localFileExistsSync = function(sFile) {
+        return fs.existsSync(this.getLocalPath(sFile));
+    };
+
+    /**
+     *
+     * @param {String} sFile       Path to file
      * @param {Function} fCallback boolean
      */
     KnoxedUp.prototype.fileExists = function(sFile, fCallback) {
@@ -838,7 +847,7 @@
 
         fCallback = typeof fCallback == 'function' ? fCallback : function() {};
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFrom)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFrom)) {
             var sFromLocal = this.getLocalPath(sFrom);
             var sToLocal   = this.getLocalPath(sTo);
             fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
@@ -912,7 +921,7 @@
         fCallback = typeof fCallback == 'function' ? fCallback  : function() {};
 
         var sLocalPath = path.join(KnoxedUp.sPath, this.oConfig.bucket, sFrom);
-        if (KnoxedUp.isLocal() && this._localFileExists(sLocalPath)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sLocalPath)) {
             var sFromLocal = sLocalPath;
             var sToLocal   = path.join(KnoxedUp.sPath, sBucket, sTo);
 
@@ -955,7 +964,7 @@
     KnoxedUp.prototype.moveFileToBucket = function(sFrom, sBucket, sTo, fCallback) {
         fCallback = typeof fCallback == 'function' ? fCallback  : function() {};
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFrom)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFrom)) {
             var sFromLocal = this.getLocalPath(sFrom);
             var sToLocal   = path.join(KnoxedUp.sPath, sBucket, sTo);
             fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
@@ -985,7 +994,7 @@
     KnoxedUp.prototype.moveFile = function(sFrom, sTo, fCallback) {
         fCallback = typeof fCallback == 'function' ? fCallback : function() {};
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFrom)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFrom)) {
             var sFromLocal = this.getLocalPath(sFrom);
             var sToLocal   = this.getLocalPath(sTo);
             fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
@@ -1048,9 +1057,9 @@
 
         var sTempFile  = fsX.getTmpSync() + sFile.split('/').pop();
 
-        //syslog.debug({action: 'KnoxedUp.toTemp', file: sFile, type: sType, extension: sExtension, temp: sTempFile});
+        syslog.debug({action: 'KnoxedUp.toTemp', file: sFile, type: sType, extension: sExtension, temp: sTempFile, local: this.getLocalPath(sFile)});
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFile)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFile)) {
             this._fromTemp(this.getLocalPath(sFile), sCheckHash, sExtension, fCallback);
         } else {
             this._getCachedFile(sCheckHash, sExtension, function(oCachedError, sCachedFile) {
@@ -1081,7 +1090,7 @@
         };
 
         async.auto({
-            lock:             function(fAsyncCallback)           { fsX.readlock(sTempFile, oLockOpts, fAsyncCallback)},
+            lock:             function(fAsyncCallback)           { fsX.readLock(sTempFile, oLockOpts, fAsyncCallback)},
             hash:   ['lock',  function(fAsyncCallback, oResults) { fsX.hashFile(sTempFile, fAsyncCallback)       }],
             check:  ['hash',  function(fAsyncCallback, oResults) { this._checkHash (oResults.hash, sCheckHash, fAsyncCallback) }.bind(this)],
             copy:   ['hash',  function(fAsyncCallback, oResults) { fsX.copyFile(sTempFile,  fsX.getTmpSync() + oResults.hash + sExtension, fAsyncCallback) }],
@@ -1201,7 +1210,14 @@
                 syslog.error({action: sTimer + '.error', input: sTempFile, error: oError, hash: sCheckHash, results: oResults});
                 fCallback(oError);
             } else {
-                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.copy});
+                if (KnoxedUp.isLocal()) {
+                    var sToLocal = this.getLocalPath(sFile);
+                    fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
+                        fsX.copyFile(oResults.move.path, sToLocal, fCallback);
+                    });
+                }
+
+                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.move});
                 fCallback(null, oResults.move.path, oResults.move.hash);
             }
         }.bind(this));
@@ -1217,7 +1233,7 @@
         fCallback = typeof fCallback == 'function' ? fCallback : function() {};
         sType     = sType || 'binary';
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFile)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFile)) {
             fsX.hashFile(this.getLocalPath(sFile), fCallback);
         } else {
             this.toTemp(sFile, sType, null, function(oError, sTempFile, sHash) {
