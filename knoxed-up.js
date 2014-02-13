@@ -69,7 +69,7 @@
             callback: bHasCallback
         };
 
-        var maxTimeOut = oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
+        var maxTimeOut = this.oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
         var tOut1 = Math.round(0.0333 * maxTimeOut);
         var tOut2 = Math.round(0.0666 * maxTimeOut);
         var tOut3 = Math.round(0.1 * maxTimeOut);
