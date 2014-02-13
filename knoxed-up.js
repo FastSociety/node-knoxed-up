@@ -69,7 +69,14 @@
             callback: bHasCallback
         };
 
-        var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
+        var maxTimeOut = oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
+        var tOut1 = Math.round(0.0333 * maxTimeOut);
+        var tOut2 = Math.round(0.0666 * maxTimeOut);
+        var tOut3 = Math.round(0.1 * maxTimeOut);
+        var tOut4 = Math.round(0.2 * maxTimeOut);
+        var tOut5 = Math.round(0.4 * maxTimeOut);
+        var aTimeoutLevels = [tOut1, tOut2, tOut3, tOut4, tOut5, maxTimeOut];
+
         var iTimeoutIndex  = 0;
         var iBitrateTimeoutIndex = 0;
 
@@ -659,7 +666,13 @@
             var iBitrateFail = 0;
             var iLength = 0;
             var iLengthPrev = 0;
-            var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
+            var maxTimeOut = oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
+            var tOut1 = Math.round(0.0333 * maxTimeOut);
+            var tOut2 = Math.round(0.0666 * maxTimeOut);
+            var tOut3 = Math.round(0.1 * maxTimeOut);
+            var tOut4 = Math.round(0.2 * maxTimeOut);
+            var tOut5 = Math.round(0.4 * maxTimeOut);
+            var aTimeoutLevels = [tOut1, tOut2, tOut3, tOut4, tOut5, maxTimeOut];
             var iTimeoutIndex = 0;
             var iBitrateTimeoutIndex = 0;
 
