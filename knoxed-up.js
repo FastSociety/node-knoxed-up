@@ -69,7 +69,10 @@
             callback: bHasCallback
         };
 
-        var maxTimeOut = this.oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
+        var maxTimeOut = 300;
+        if (this.oConfig.DAEMONS) {
+            maxTimeOut = this.oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
+        }
         var tOut1 = Math.round(0.0333 * maxTimeOut);
         var tOut2 = Math.round(0.0666 * maxTimeOut);
         var tOut3 = Math.round(0.1 * maxTimeOut);
@@ -666,7 +669,11 @@
             var iBitrateFail = 0;
             var iLength = 0;
             var iLengthPrev = 0;
-            var maxTimeOut = oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
+            var maxTimeOut = 300;
+            if (this.oConfig.DAEMONS) {
+                maxTimeOut = this.oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
+            }
+            oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
             var tOut1 = Math.round(0.0333 * maxTimeOut);
             var tOut2 = Math.round(0.0666 * maxTimeOut);
             var tOut3 = Math.round(0.1 * maxTimeOut);
