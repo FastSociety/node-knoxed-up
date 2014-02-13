@@ -437,7 +437,7 @@
                 fCallback(oError);
             } else {
                 var oYearFromNow = new Date();
-                oYearFromNow.setFullYear(parseInt(oYearFromNow.getFullYear(), 10) + 1);
+                oYearFromNow.setFullYear(parseInt(oYearFromNow.getFullYear(), 10) + 10);
 
                 oHeaders['Content-Length']  = oResults.stat.size;
                 oHeaders['Content-MD5']     = oResults.md5;
