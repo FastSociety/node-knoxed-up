@@ -436,11 +436,15 @@
                 syslog.error({action: 'KnoxedUp._setSizeAndHashHeaders.error', file: sFile, headers: oHeaders, error: oError});
                 fCallback(oError);
             } else {
+                var oYearFromNow = new Date();
+                oYearFromNow.setFullYear(parseInt(oYearFromNow.getFullYear(), 10) + 1);
+
                 oHeaders['Content-Length']  = oResults.stat.size;
                 oHeaders['Content-MD5']     = oResults.md5;
                 oHeaders['x-amz-meta-sha1'] = oResults.sha1;
+                oHeaders['Expires']         = oYearFromNow.toUTCString();
 
-                //syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders.done', file: sFile, headers: oHeaders});
+                syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders.done', file: sFile, headers: oHeaders});
                 fCallback(null, oHeaders);
             }
         });
