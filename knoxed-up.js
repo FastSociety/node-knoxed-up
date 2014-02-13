@@ -627,106 +627,106 @@
         var iTimeout, iBitrateTimeout;
 
         var sTimer = syslog.timeStart(oLog.action, oLog);
-        var fDone  = function(fFinishedCallback, oError, sTo) {
-            clearInterval(iTimeout);
-            clearInterval(iBitrateTimeout);
-            fsX.unlock(sFrom, function(oLockError) {
-                if (oError) {
-                    syslog.error(oLog);
-                } else {
-                    if (oLog.file_size !== undefined) {
-                        oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
-                        oLog.bps = (oLog.file_size * 8) / (syslog.getTime(sTimer)/1000);
-                    }
-
-                    syslog.timeStop(sTimer, oLog);
-                }
-
-                fFinishedCallback(oError, sTo);
-            });
-        };
-
-        var iBitrateFail = 0;
-        var iLength = 0;
-        var iLengthPrev = 0;
-        var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
-        var iTimeoutIndex = 0;
-        var iBitrateTimeoutIndex = 0;
-
-        iTimeout = setInterval(function() {
-            iTimeoutIndex++;
-
-            switch (true) {
-                // Top
-                case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.error({
-                        action: 'KnoxedUp.putStream.timeAlert',
-                        error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'),
-                        oLog: oLog,
-                        iLength: iLength,
-                        iLengthTotal: oLog.file_size ,
-                        bps: (iLength*8)/iTimeoutIndex,
-                        '__ms': syslog.getTime(sTimer)
-                    });
-                    clearInterval(iTimeout);
-                    /// KILLL MMEEEE!! (Not explicitly killing this upload here, but we've likely gone too far at this point)
-                    break;
-
-                // first & interim warnings
-                case aTimeoutLevels.indexOf(iTimeoutIndex) >= 0:
-                    syslog.warn({
-                        action: 'KnoxedUp.putStream.timeAlert',
-                        warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds',
-                        oLog: oLog,
-                        iLength: iLength,
-                        iLengthTotal: oLog.file_size ,
-                        bps: (iLength*8)/iTimeoutIndex,
-                        '__ms': syslog.getTime(sTimer)
-                    });
-                    break;
-            }
-        }.bind(this), 1000);
-
-
-        iBitrateTimeout = setInterval(function() {
-            iBitrateTimeoutIndex++;
-
-            // monitor transfer rate, retry if bitrate drops less than threshold
-            var MinimumAcceptableBitrate = this.iMinimumUploadBitrate;
-            var NDeltaBps = (iLength - iLengthPrev) * 8;
-            iLengthPrev = iLength;
-            if (NDeltaBps < MinimumAcceptableBitrate) {
-                iBitrateFail++;
-                if (iBitrateFail >= this.NBitRateFail) {
-                    oLog.action += '.bitrate.retry';
-                    oLog.bps = NDeltaBps;
-                    syslog.warn(oLog);
-                    clearInterval(iBitrateTimeout);
-                    clearInterval(iTimeout);
-                    var fOriginalCallback = fCallback;
-                    fCallback = function(oError, oReturn) {
-                        syslog.warn({
-                            action: 'KnoxedUp.putStream.double_callback',
-                            error: 'callback is being attempted to be called more than once',
-                            oError: oError,
-                            oReturn: oReturn
-                        });
-                    };
-                    return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
-                }
-            }
-            else {
-                iBitrateFail = 0;
-            }
-
-        }.bind(this), 1000);
-
 
         if (KnoxedUp.isLocal()) {
             this.localize(sFrom, sTo, function() {
-                fDone(fCallback, null, sTo);
+                fCallback(null, sTo);
             });
         } else {
+            var fDone  = function(fFinishedCallback, oError, sTo) {
+                clearInterval(iTimeout);
+                clearInterval(iBitrateTimeout);
+                fsX.unlock(sFrom, function(oLockError) {
+                    if (oError) {
+                        syslog.error(oLog);
+                    } else {
+                        if (oLog.file_size !== undefined) {
+                            oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
+                            oLog.bps = (oLog.file_size * 8) / (syslog.getTime(sTimer)/1000);
+                        }
+
+                        syslog.timeStop(sTimer, oLog);
+                    }
+
+                    fFinishedCallback(oError, sTo);
+                });
+            };
+
+            var iBitrateFail = 0;
+            var iLength = 0;
+            var iLengthPrev = 0;
+            var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
+            var iTimeoutIndex = 0;
+            var iBitrateTimeoutIndex = 0;
+
+            iTimeout = setInterval(function() {
+                iTimeoutIndex++;
+
+                switch (true) {
+                    // Top
+                    case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
+                        syslog.error({
+                            action: 'KnoxedUp.putStream.timeAlert',
+                            error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'),
+                            oLog: oLog,
+                            iLength: iLength,
+                            iLengthTotal: oLog.file_size ,
+                            bps: (iLength*8)/iTimeoutIndex,
+                            '__ms': syslog.getTime(sTimer)
+                        });
+                        clearInterval(iTimeout);
+                        /// KILLL MMEEEE!! (Not explicitly killing this upload here, but we've likely gone too far at this point)
+                        break;
+
+                    // first & interim warnings
+                    case aTimeoutLevels.indexOf(iTimeoutIndex) >= 0:
+                        syslog.warn({
+                            action: 'KnoxedUp.putStream.timeAlert',
+                            warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds',
+                            oLog: oLog,
+                            iLength: iLength,
+                            iLengthTotal: oLog.file_size ,
+                            bps: (iLength*8)/iTimeoutIndex,
+                            '__ms': syslog.getTime(sTimer)
+                        });
+                        break;
+                }
+            }.bind(this), 1000);
+
+
+            iBitrateTimeout = setInterval(function() {
+                iBitrateTimeoutIndex++;
+
+                // monitor transfer rate, retry if bitrate drops less than threshold
+                var MinimumAcceptableBitrate = this.iMinimumUploadBitrate;
+                var NDeltaBps = (iLength - iLengthPrev) * 8;
+                iLengthPrev = iLength;
+                if (NDeltaBps < MinimumAcceptableBitrate) {
+                    iBitrateFail++;
+                    if (iBitrateFail >= this.NBitRateFail) {
+                        oLog.action += '.bitrate.retry';
+                        oLog.bps = NDeltaBps;
+                        syslog.warn(oLog);
+                        clearInterval(iBitrateTimeout);
+                        clearInterval(iTimeout);
+                        var fOriginalCallback = fCallback;
+                        fCallback = function(oError, oReturn) {
+                            syslog.warn({
+                                action: 'KnoxedUp.putStream.double_callback',
+                                error: 'callback is being attempted to be called more than once',
+                                oError: oError,
+                                oReturn: oReturn
+                            });
+                        };
+                        return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
+                    }
+                }
+                else {
+                    iBitrateFail = 0;
+                }
+
+            }.bind(this), 1000);
+
             this._setSizeAndHashHeaders(sFrom, oHeaders, function(oError, oPreppedHeaders) {
                 if (oError) {
                     fDone(fCallback,oError);
@@ -834,16 +834,18 @@
 
     KnoxedUp.prototype.localize = function(sFrom, sTo, fCallback) {
         var sToLocal = this.getLocalPath(sTo);
+        syslog.debug({action: 'KnoxedUp.localize', from: sFrom, local: sToLocal});
         fsX.mkdirP(path.dirname(sToLocal), 0777, function(oError) {
             if (oError) {
-                syslog.error({action: 'KnoxedUp.putStream.Local.error', from: sFrom, local: sToLocal, error: oError});
+                syslog.error({action: 'KnoxedUp.localize.error', from: sFrom, local: sToLocal, error: oError});
                 fCallback(oError)
             } else {
                 fsX.copyFile(sFrom, sToLocal, function(oCopyError) {
                     if (oCopyError) {
-                        syslog.error({action: 'KnoxedUp.putStream.Local.copy.error', from: sFrom, local: sToLocal, error: oCopyError});
+                        syslog.error({action: 'KnoxedUp.localize.copy.error', from: sFrom, local: sToLocal, error: oCopyError});
                         fCallback(oCopyError);
                     } else {
+                        syslog.debug({action: 'KnoxedUp.localize.done', from: sFrom, local: sToLocal});
                         fCallback(null, sTo);
                     }
                 });
@@ -1100,12 +1102,10 @@
         };
 
         async.auto({
-            lock:             function(fAsyncCallback)           { fsX.readLock(sTempFile, oLockOpts, fAsyncCallback)},
-            hash:   ['lock',  function(fAsyncCallback, oResults) { fsX.hashFile(sTempFile, fAsyncCallback)       }],
-            check:  ['hash',  function(fAsyncCallback, oResults) { this._checkHash (oResults.hash, sCheckHash, fAsyncCallback) }.bind(this)],
-            copy:   ['hash',  function(fAsyncCallback, oResults) { fsX.copyFile(sTempFile,  fsX.getTmpSync() + oResults.hash + sExtension, fAsyncCallback) }],
-            chmod:  ['copy',  function(fAsyncCallback, oResults) { fs.chmod(oResults.copy, 0777, fAsyncCallback) }],
-            unlock: ['chmod', function(fAsyncCallback)           { fsX.unlock(sTempFile, fAsyncCallback)         }]
+            hash:              function(fAsyncCallback, oResults) { fsX.hashFile(sTempFile, fAsyncCallback)       },
+            check:   ['hash',  function(fAsyncCallback, oResults) { this._checkHash (oResults.hash, sCheckHash, fAsyncCallback) }.bind(this)],
+            copy:    ['hash',  function(fAsyncCallback, oResults) { fsX.copyFile(sTempFile,  fsX.getTmpSync() + oResults.hash + sExtension, fAsyncCallback) }],
+            chmod:   ['copy',  function(fAsyncCallback, oResults) { fs.chmod(oResults.copy, 0777, fAsyncCallback) }]
         }, function(oError, oResults) {
             if (oError) {
                 syslog.error({action: sTimer + '.error', input: sTempFile, error: oError});
