@@ -13,6 +13,7 @@
         this.iMinimumUploadBitrate      = 500000;
         // if transfers drop below threshold 3 times in a row do something
         this.NBitRateFail = 3;
+        this.aTimeoutLevels = oConfig.TIMEOUTS && oConfig.TIMEOUTS.FILE && oConfig.TIMEOUTS.FILE.KNOXEDUP ? oConfig.TIMEOUTS.FILE.KNOXEDUP : [10, 20, 30, 60, 300];
 
         if (oConfig.AMAZON !== undefined) {
             this.oConfig = {
@@ -24,8 +25,9 @@
             };
 
             // see http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
-            if (oConfig.AMAZON.REGION !== undefined)
-                this.oConfig.region = oConfig.AMAZON.REGION;           
+            if (oConfig.AMAZON.REGION !== undefined) {
+                this.oConfig.region = oConfig.AMAZON.REGION;
+            }
 
             this.sOriginalBucket = oConfig.AMAZON.BUCKET;
 
@@ -56,8 +58,8 @@
      * @private
      */
     KnoxedUp.prototype._command = function (sCommand, sFilename, sType, oHeaders, fCallback, iAttempts, iMaxAttempts) {
-        var iAttempts    = iAttempts    !== undefined ? iAttempts    : 1;
-        var iMaxAttempts = iMaxAttempts !== undefined ? iMaxAttempts : 10;
+            iAttempts    = iAttempts    !== undefined ? iAttempts    : 1;
+            iMaxAttempts = iMaxAttempts !== undefined ? iMaxAttempts : 10;
         var bHasCallback = typeof fCallback == 'function';
 
         var oLog = {
@@ -69,7 +71,7 @@
             callback: bHasCallback
         };
 
-        var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
+        var iMaxTimeout    = this.aTimeoutLevels[this.aTimeoutLevels.length - 1];
         var iTimeoutIndex  = 0;
         var iBitrateTimeoutIndex = 0;
 
@@ -128,24 +130,34 @@
         iTimeout = setInterval(function() {
             iTimeoutIndex++;
 
-            switch (true) {
-                
-                case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.error({action: 'KnoxedUp.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), 
-                        oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
-                    break;
-
-                // first & interim warnings
-                case aTimeoutLevels.indexOf(iTimeoutIndex) >= 0:
-                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
-                        oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
-                    // if a del hasn't completed in 10seconds/first timeout retry somethings up...
-                    if (sCommand == 'del') {
-                        oLog.action += '.tooSlow.retry';
-                        syslog.warn({action: oLog.action, oLog: oLog});
-                        return fRetry('KnoxedUp._command.' + sCommand + '.delTooSlow', new Error('Del action took way too long'));                        
-                    }
-                    break;
+            if (iMaxTimeout <= iTimeoutIndex) {
+                if (iMaxTimeout  % iTimeoutIndex == 0) { // Multiple of the Final Time
+                    syslog.error({
+                        action: 'KnoxedUp.timeAlert',
+                        error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'),
+                        oLog: oLog,
+                        iLength: iLength,
+                        iLengthTotal: iLengthTotal,
+                        bps: (iLength*8)/iTimeoutIndex,
+                        __ms: syslog.getTime(sTimer)
+                    });
+                }
+            } else if (this.aTimeoutLevels.indexOf(iTimeoutIndex) >= 0) { // Warnings
+                syslog.warn({
+                    action: 'KnoxedUp.timeAlert',
+                    warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds',
+                    oLog: oLog,
+                    iLength: iLength,
+                    iLengthTotal: iLengthTotal,
+                    bps: (iLength*8)/iTimeoutIndex,
+                    __ms: syslog.getTime(sTimer)
+                });
+                // if a del hasn't completed in 10seconds/first timeout retry somethings up...
+                if (sCommand == 'del') {
+                    oLog.action += '.tooSlow.retry';
+                    syslog.warn({action: oLog.action, oLog: oLog});
+                    return fRetry('KnoxedUp._command.' + sCommand + '.delTooSlow', new Error('Del action took way too long'));
+                }
             }
         }.bind(this), 1000);
 
@@ -269,118 +281,143 @@
     KnoxedUp.prototype.getFile = function (sFilename, sToFile, sType, fCallback) {
         syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
 
-        var sTimer   = syslog.timeStart('KnoxedUp.getFile');
-        var bError   = false;
-        var bClosed  = false;
-        var oHeaders = {};
-        var oToFile  = fs.createWriteStream(sToFile, {
-            flags:    'w',
-            encoding: sType
-        });
+        var sTimer      = syslog.timeStart('KnoxedUp.getFile');
+        var bError      = false;
+        var bClosed     = false;
+        var oHeaders    = {};
+        var iFileHandle = null;
 
         var fDone = function(sFile) {
             syslog.timeStop(sTimer, {input: sFilename, output: sToFile, headers: oHeaders});
+
             fCallback(null, sToFile);
-        };
+        }.bind(this);
 
         var fCheck = function(oError, sFile) {
-            if (oError) {
-                syslog.error({action: sTimer + '.error', input: sFilename, headers: oHeaders, error: oError});
-                fCallback(oError);
-            } else if (oHeaders['x-amz-meta-sha1'] !== undefined) {
-                fsX.hashFile(sToFile, function(oError, sHash) {
-                    if (oError) {
-                        syslog.error({action: sTimer + '.hash.error', input: sFilename, headers: oHeaders, error: oError});
-                        fCallback(oError);
-                    } else {
-                        if (oHeaders['x-amz-meta-sha1'] != sHash) {
-                            syslog.error({action: sTimer + '.hash.mismatch.error', input: sFilename, headers: oHeaders, hash: sHash, error: new Error('Hash Mismatch')});
+            fsX.unlock(sFile, function() {
+                if (oError) {
+                    syslog.error({action: sTimer + '.error', input: sFilename, output: sFile, headers: oHeaders, error: oError});
+                    fCallback(oError);
+                } else if (oHeaders['x-amz-meta-sha1'] !== undefined) {
+                    fsX.hashFile(sToFile, function(oError, sHash) {
+                        if (oError) {
+                            syslog.error({action: sTimer + '.hash.error', input: sFilename, output: sFile, headers: oHeaders, error: oError});
                             fCallback(oError);
+                        } else if (oHeaders['x-amz-meta-sha1'] != sHash) {
+                            syslog.error({action: sTimer + '.hash.mismatch.error', input: sFilename, output: sFile, headers: oHeaders, hash: sHash, error: new Error('Hash Mismatch')});
+                            fCallback(oError);
+                        } else if (KnoxedUp.isLocal()) {
+                            this.localize(sToFile, sFilename, function() {
+                                fDone(sFile);
+                            });
                         } else {
                             fDone(sFile);
                         }
+                    }.bind(this));
+                } else if (KnoxedUp.isLocal()) {
+                    this.localize(sToFile, sFilename, function() {
+                        fDone(sFile);
+                    });
+                } else {
+                    fDone(sFile);
+                }
+            }.bind(this));
+        }.bind(this);
+
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFilename)) {
+            fsX.copyFile(this.getLocalPath(sFilename), sToFile, function(oError, sFile) {
+                fDone(sFile);
+            });
+        } else {
+            var oResponse;
+
+            fsX.writeLock(sToFile, {retries: 30, wait: 1000}, function(oLockError) {
+                if (oLockError) {
+                    return fCheck(oLockError);
+                }
+
+                var oToFile  = fs.createWriteStream(sToFile, {
+                    flags:    'w',
+                    //encoding: sType
+                });
+
+                oToFile.on('error', function(oError) {
+                    bError = true;
+                    syslog.error({action: sTimer + '.write.error', input: sFilename, message: 'failed to open file for writing: (' + sToFile + ')', error: oError});
+                    fCheck(oError);
+                });
+
+                oToFile.on('close', function() {
+                    bClosed = true;
+                    if (!bError) {
+                        syslog.debug({action: 'KnoxedUp.getFile.write.done', output: sToFile});
+                        fCheck(null, sToFile);
                     }
                 });
-            } else {
-                fDone(sFile);
-            }
-        };
 
-        oToFile.on('open', function(fd) {
-            oToFile.on('error', function(oError) {
-                bError = true;
-                syslog.error({action: sTimer + '.write.error', input: sFilename, message: 'failed to open file for writing: (' + sToFile + ')', error: oError});
-                fCheck(oError);
-            });
+                var oRequest = this._get(sFilename, sType, {}, function(oError, oS3Response, sData, iRetries) {
+                    oResponse = oS3Response;
+                    if (oResponse) {
+                        oHeaders = oResponse.headers;
+                    }
 
-            oToFile.on('close', function() {
-                bClosed = true;
-                if (!bError) {
-                    syslog.debug({action: 'KnoxedUp.getFile.write.done', output: sToFile});
-                    fCheck(null, sToFile);
-                }
-            });
-
-            var oRequest = this._get(sFilename, sType, {}, function(oError, oResponse, sData, iRetries) {
-                if (oResponse) {
-                    oHeaders = oResponse.headers;
-                }
-                
-                syslog.debug({action: 'KnoxedUp.getFile.got'});
-                if (oError) {
-                    syslog.error({action: sTimer + '.error', input: sFilename, error: oError});
-                    bError = true;
-                    oToFile.end();
-
-                    fs.exists(sToFile, function(bExists) {
-                        if (bExists) {
-                            fs.unlink(sToFile, function() {
-                                syslog.debug({action: 'KnoxedUp.getFile.unlink.done'});
-                                fCheck(oError);
-                            });
-                        } else {
-                            syslog.debug({action: 'KnoxedUp.getFile.done'});
-                            fCheck(oError);
-                        }
-                    });
-                } else if (!bClosed) {
-                    syslog.debug({action: 'KnoxedUp.getFile.request.end'});
-
-                    // Weird case where file may be incomplete
-                    // if (iRetries) { // this was always true
-                    if (iRetries > 1) {
-                        syslog.debug({action: 'KnoxedUp.getFile.request.end.retried'});
+                    syslog.debug({action: 'KnoxedUp.getFile.got'});
+                    if (oError) {
+                        syslog.error({action: sTimer + '.error', input: sFilename, error: oError});
                         bError = true;
                         oToFile.end();
 
-                        fs.writeFile(sToFile, sData, sType, function(oWriteError) {
-                            if (oWriteError) {
-                                syslog.error({action: sTimer + '.writeFile.error', input: sFilename, error: oWriteError});
-                                fCheck(oWriteError);
+                        fs.exists(sToFile, function(bExists) {
+                            if (bExists) {
+                                fs.unlink(sToFile, function() {
+                                    syslog.debug({action: 'KnoxedUp.getFile.unlink.done'});
+                                    fCheck(oError);
+                                });
                             } else {
-                                fCheck(null, sToFile);
+                                syslog.debug({action: 'KnoxedUp.getFile.done'});
+                                fCheck(oError);
                             }
-                        })
-                    }
-                }
-            });
+                        });
+                    } else if (!bClosed) {
+                        syslog.debug({action: 'KnoxedUp.getFile.request.end'});
 
-            oRequest.on('response', function(oResponse) {
-                oHeaders = oResponse.headers;
-                syslog.debug({action: 'KnoxedUp.getFile.response'});
+                        // Weird case where file may be incomplete
+                        // if (iRetries) { // this was always true
+                        if (iRetries > 1) {
+                            syslog.debug({action: 'KnoxedUp.getFile.request.end.retried'});
+                            bError = true;
+                            oToFile.end();
 
-                oResponse.on('data', function(sChunk) {
-                    if (!bError) {
-                        oToFile.write(sChunk, sType);
+                            fs.writeFile(sToFile, sData, sType, function(oWriteError) {
+                                if (oWriteError) {
+                                    syslog.error({action: sTimer + '.writeFile.error', input: sFilename, error: oWriteError});
+                                    fCheck(oWriteError);
+                                } else {
+                                    fCheck(null, sToFile);
+                                }
+                            })
+                        }
                     }
                 });
 
-                oResponse.on('end', function() {
-                    //syslog.debug({action: 'KnoxedUp.getFile.response.end'});
-                    oToFile.end();
+                oRequest.on('response', function(oS3Response) {
+                    oResponse = oS3Response;
+                    oHeaders = oResponse.headers;
+                    syslog.debug({action: 'KnoxedUp.getFile.response'});
+
+                    oResponse.on('data', function(sChunk) {
+                        if (!bError) {
+                            oToFile.write(sChunk, sType);
+                        }
+                    });
+
+                    oResponse.on('end', function() {
+                        //syslog.debug({action: 'KnoxedUp.getFile.response.end'});
+                        oToFile.end();
+                    });
                 });
-            });
-        }.bind(this));
+            }.bind(this));
+        }
     };
 
     KnoxedUp.prototype.putFile = function (sFilename, sType, oHeaders, fCallback) {
@@ -395,20 +432,31 @@
 
     KnoxedUp.prototype._setSizeAndHashHeaders = function (sFile, oHeaders, fCallback) {
         //syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders', file: sFile, headers: oHeaders});
-        async.parallel({
-            stat: function(fAsyncCallback) { fs.stat(            sFile, fAsyncCallback); },
-            md5:  function(fAsyncCallback) { fsX.md5FileToBase64(sFile, fAsyncCallback); },
-            sha1: function(fAsyncCallback) { fsX.hashFile(       sFile, fAsyncCallback); }
+        var oLockOpts = {
+            retries:    300,
+            wait:       100
+        };
+
+        async.auto({
+            lock:                           function(fAsyncCallback) { fsX.readLock(sFile, oLockOpts, fAsyncCallback)},
+            stat:   ['lock',                function(fAsyncCallback) { fs.stat(            sFile, fAsyncCallback);   }],
+            md5:    ['lock',                function(fAsyncCallback) { fsX.md5FileToBase64(sFile, fAsyncCallback);   }],
+            sha1:   ['lock',                function(fAsyncCallback) { fsX.hashFile(       sFile, fAsyncCallback);   }],
+            unlock: ['stat', 'md5', 'sha1', function(fAsyncCallback) { fsX.unlock(sFile, fAsyncCallback)             }]
         }, function(oError, oResults) {
             if (oError) {
                 syslog.error({action: 'KnoxedUp._setSizeAndHashHeaders.error', file: sFile, headers: oHeaders, error: oError});
                 fCallback(oError);
             } else {
+                var oYearFromNow = new Date();
+                oYearFromNow.setFullYear(parseInt(oYearFromNow.getFullYear(), 10) + 10);
+
                 oHeaders['Content-Length']  = oResults.stat.size;
                 oHeaders['Content-MD5']     = oResults.md5;
                 oHeaders['x-amz-meta-sha1'] = oResults.sha1;
+                oHeaders['Expires']         = oYearFromNow.toUTCString();
 
-                //syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders.done', file: sFile, headers: oHeaders});
+                syslog.debug({action: 'KnoxedUp._setSizeAndHashHeaders.done', file: sFile, headers: oHeaders});
                 fCallback(null, oHeaders);
             }
         });
@@ -535,6 +583,15 @@
     /**
      *
      * @param {String} sFile       Path to file
+     * @return boolean
+     */
+    KnoxedUp.prototype._localFileExistsSync = function(sFile) {
+        return fs.existsSync(this.getLocalPath(sFile));
+    };
+
+    /**
+     *
+     * @param {String} sFile       Path to file
      * @param {Function} fCallback boolean
      */
     KnoxedUp.prototype.fileExists = function(sFile, fCallback) {
@@ -586,51 +643,58 @@
         var iTimeout, iBitrateTimeout;
 
         var sTimer = syslog.timeStart(oLog.action, oLog);
-        var fDone  = function(fFinishedCallback, oError, sTo) {
-            clearInterval(iTimeout);
-            clearInterval(iBitrateTimeout);
-            if (oError) {
-                syslog.error(oLog);
-            } else {
-                if (oLog.file_size !== undefined) {
-                    oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
-                    oLog.bps = (oLog.file_size * 8) / (syslog.getTime(sTimer)/1000);                    
-                }
 
-                syslog.timeStop(sTimer, oLog);
-            }
+        if (KnoxedUp.isLocal()) {
+            this.localize(sFrom, sTo, function() {
+                fCallback(null, sTo);
+            });
+        } else {
+            var fDone  = function(fFinishedCallback, oError, sTo) {
+                clearInterval(iTimeout);
+                clearInterval(iBitrateTimeout);
+                fsX.unlock(sFrom, function(oLockError) {
+                    if (oError) {
+                        syslog.error(oLog);
+                    } else {
+                        if (oLog.file_size !== undefined) {
+                            oLog.bytes_per_ms = oLog.file_size / syslog.getTime(sTimer);
+                            oLog.bps = (oLog.file_size * 8) / (syslog.getTime(sTimer)/1000);
+                        }
 
-            fFinishedCallback(oError, sTo);
-        };
+                        syslog.timeStop(sTimer, oLog);
+                    }
 
-        var iBitrateFail = 0;
-        var iLength = 0;
-        var iLengthPrev = 0;
-        var aTimeoutLevels = [10, 20, 30, 60, 120, 300];
-        var iTimeoutIndex = 0;
-        var iBitrateTimeoutIndex = 0;
+                    fFinishedCallback(oError, sTo);
+                });
+            };
 
-        iTimeout = setInterval(function() {
-            iTimeoutIndex++;
+            var iBitrateFail = 0;
+            var iLength = 0;
+            var iLengthPrev = 0;
+            var iMaxTimeout    = this.aTimeoutLevels[this.aTimeoutLevels.length - 1];
+            var iTimeoutIndex = 0;
+            var iBitrateTimeoutIndex = 0;
 
-            switch (true) {
-                // Top
-                case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.error({
-                        action: 'KnoxedUp.putStream.timeAlert',
-                        error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'),
-                        oLog: oLog,
-                        iLength: iLength,
-                        iLengthTotal: oLog.file_size ,
-                        bps: (iLength*8)/iTimeoutIndex,
-                        '__ms': syslog.getTime(sTimer)
-                    });
-                    clearInterval(iTimeout);
-                    /// KILLL MMEEEE!! (Not explicitly killing this upload here, but we've likely gone too far at this point)
-                    break;
+            iTimeout = setInterval(function() {
+                iTimeoutIndex++;
 
-                // first & interim warnings
-                case aTimeoutLevels.indexOf(iTimeoutIndex) >= 0:
+
+
+                if (iMaxTimeout <= iTimeoutIndex) {
+                    if (iMaxTimeout  % iTimeoutIndex == 0) { // Multiple of the Final Time
+                        syslog.error({
+                            action: 'KnoxedUp.putStream.timeAlert',
+                            error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'),
+                            oLog: oLog,
+                            iLength: iLength,
+                            iLengthTotal: oLog.file_size ,
+                            bps: (iLength*8)/iTimeoutIndex,
+                            '__ms': syslog.getTime(sTimer)
+                        });
+
+                        /// KILLL MMEEEE!! (Not explicitly killing this upload here, but we've likely gone too far at this point)
+                    }
+                } else if (this.aTimeoutLevels.indexOf(iTimeoutIndex) >= 0) { // Warnings
                     syslog.warn({
                         action: 'KnoxedUp.putStream.timeAlert',
                         warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds',
@@ -640,63 +704,43 @@
                         bps: (iLength*8)/iTimeoutIndex,
                         '__ms': syslog.getTime(sTimer)
                     });
-                    break;
-            }
-        }.bind(this), 1000);
-
-
-        iBitrateTimeout = setInterval(function() {
-            iBitrateTimeoutIndex++;
-
-            // monitor transfer rate, retry if bitrate drops less than threshold
-            var MinimumAcceptableBitrate = this.iMinimumUploadBitrate;
-            var NDeltaBps = (iLength - iLengthPrev) * 8;
-            iLengthPrev = iLength;
-            if (NDeltaBps < MinimumAcceptableBitrate) {
-                iBitrateFail++;
-                if (iBitrateFail >= this.NBitRateFail) {
-                    oLog.action += '.bitrate.retry';
-                    oLog.bps = NDeltaBps;
-                    syslog.warn(oLog);
-                    clearInterval(iBitrateTimeout);
-                    clearInterval(iTimeout);
-                    var fOriginalCallback = fCallback;
-                    fCallback = function(oError, oReturn) {
-                        syslog.warn({
-                            action: 'KnoxedUp.putStream.double_callback',
-                            error: 'callback is being attempted to be called more than once',
-                            oError: oError,
-                            oReturn: oReturn
-                        });
-                    };
-                    return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
                 }
-            }
-            else {
-                iBitrateFail = 0;
-            }
-
-        }.bind(this), 1000);
+            }.bind(this), 1000);
 
 
-        if (KnoxedUp.isLocal()) {
-            var sToLocal = this.getLocalPath(sTo);
-            fsX.mkdirP(path.dirname(sToLocal), 0777, function(oError) {
-                if (oError) {
-                    syslog.error({action: 'KnoxedUp.putStream.Local.error', from: sFrom, local: sToLocal, error: oError});
-                    fDone(fCallback, oError);
-                } else {
-                    fsX.copyFile(sFrom, sToLocal, function(oCopyError) {
-                        if (oCopyError) {
-                            syslog.error({action: 'KnoxedUp.putStream.Local.copy.error', from: sFrom, local: sToLocal, error: oCopyError});
-                            fDone(fCallback, oCopyError);
-                        } else {
-                            fDone(fCallback, null, sTo);
-                        }
-                    }.bind(this));
+            iBitrateTimeout = setInterval(function() {
+                iBitrateTimeoutIndex++;
+
+                // monitor transfer rate, retry if bitrate drops less than threshold
+                var MinimumAcceptableBitrate = this.iMinimumUploadBitrate;
+                var NDeltaBps = (iLength - iLengthPrev) * 8;
+                iLengthPrev = iLength;
+                if (NDeltaBps < MinimumAcceptableBitrate) {
+                    iBitrateFail++;
+                    if (iBitrateFail >= this.NBitRateFail) {
+                        oLog.action += '.bitrate.retry';
+                        oLog.bps = NDeltaBps;
+                        syslog.warn(oLog);
+                        clearInterval(iBitrateTimeout);
+                        clearInterval(iTimeout);
+                        var fOriginalCallback = fCallback;
+                        fCallback = function(oError, oReturn) {
+                            syslog.warn({
+                                action: 'KnoxedUp.putStream.double_callback',
+                                error: 'callback is being attempted to be called more than once',
+                                oError: oError,
+                                oReturn: oReturn
+                            });
+                        };
+                        return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
+                    }
                 }
-            }.bind(this));
-        } else {
+                else {
+                    iBitrateFail = 0;
+                }
+
+            }.bind(this), 1000);
+
             this._setSizeAndHashHeaders(sFrom, oHeaders, function(oError, oPreppedHeaders) {
                 if (oError) {
                     fDone(fCallback,oError);
@@ -705,55 +749,61 @@
                         oLog.file_size = oPreppedHeaders['Content-Length'];
                     }
 
-                    var oStream  = fs.createReadStream(sFrom);
-
-                    oStream.on('error', function(oError) {
-                        oStream.destroy();
-
-                        oLog.error = new Error(oError);
-                        fDone(fCallback, oLog.error);
-                    });
-
-                    var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
-                        oStream.destroy();
-                        oLog.status = -1;
-                        if (oResponse) {
-                            oLog.status = oResponse.statusCode;
+                    fsX.readLock(sFrom, {retries: 300, wait: 100}, function(oLockError) {
+                        if (oLockError) {
+                            return fDone(fCallback, oLockError);
                         }
 
-                        if (oError) {
-                            if (iRetries > 3) {
-                                oLog.action += '.request.hang_up.retry.max';
-                                oLog.error   = oError;
-                                syslog.error(oLog);
-                                fDone(fCallback, oLog.error);
-                            } else {
-                                oLog.action += '.request.hang_up.retry';
-                                oLog.error   = (util.isError(oError)) ? new Error(oError.message) : oError;
-                                syslog.warn(oLog);
-                                this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
-                            }
-                        } else if(oResponse.statusCode >= 400) {
-                            oLog.error   = new Error('S3 Error Code ' + oResponse.statusCode);
-                            oLog.action += '.request.500.retry';
-                            if (iRetries > 3) {
-                                oLog.action += '.max';
-                                fDone(fCallback, oLog.error);
-                            } else {
-                                syslog.warn(oLog);
-                                clearInterval(iTimeout);
-                                clearInterval(iBitrateTimeout);
-                                this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
-                            }
-                        } else {
-                            oLog.action += '.done';
-                            fDone(fCallback, null, sTo);
-                        }
-                    }.bind(this));
+                        var oStream  = fs.createReadStream(sFrom);
 
-                    oRequest.on('progress', function(oProgress) {
-                        iLength = oProgress.written;
-                        this.onProgress(oProgress);
+                        oStream.on('error', function(oError) {
+                            oStream.destroy();
+
+                            oLog.error = new Error(oError);
+                            fDone(fCallback, oLog.error);
+                        });
+
+                        var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
+                            oStream.destroy();
+                            oLog.status = -1;
+                            if (oResponse) {
+                                oLog.status = oResponse.statusCode;
+                            }
+
+                            if (oError) {
+                                if (iRetries > 3) {
+                                    oLog.action += '.request.hang_up.retry.max';
+                                    oLog.error   = oError;
+                                    syslog.error(oLog);
+                                    fDone(fCallback, oLog.error);
+                                } else {
+                                    oLog.action += '.request.hang_up.retry';
+                                    oLog.error   = (util.isError(oError)) ? new Error(oError.message) : oError;
+                                    syslog.warn(oLog);
+                                    this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
+                                }
+                            } else if(oResponse.statusCode >= 400) {
+                                oLog.error   = new Error('S3 Error Code ' + oResponse.statusCode);
+                                oLog.action += '.request.500.retry';
+                                if (iRetries > 3) {
+                                    oLog.action += '.max';
+                                    fDone(fCallback, oLog.error);
+                                } else {
+                                    syslog.warn(oLog);
+                                    clearInterval(iTimeout);
+                                    clearInterval(iBitrateTimeout);
+                                    this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
+                                }
+                            } else {
+                                oLog.action += '.done';
+                                fDone(fCallback, null, sTo);
+                            }
+                        }.bind(this));
+
+                        oRequest.on('progress', function(oProgress) {
+                            iLength = oProgress.written;
+                            this.onProgress(oProgress);
+                        }.bind(this));
                     }.bind(this));
                 }
             }.bind(this));
@@ -796,12 +846,33 @@
         }.bind(this));
     };
 
+    KnoxedUp.prototype.localize = function(sFrom, sTo, fCallback) {
+        var sToLocal = this.getLocalPath(sTo);
+        syslog.debug({action: 'KnoxedUp.localize', from: sFrom, local: sToLocal});
+        fsX.mkdirP(path.dirname(sToLocal), 0777, function(oError) {
+            if (oError) {
+                syslog.error({action: 'KnoxedUp.localize.error', from: sFrom, local: sToLocal, error: oError});
+                fCallback(oError)
+            } else {
+                fsX.copyFile(sFrom, sToLocal, function(oCopyError) {
+                    if (oCopyError) {
+                        syslog.error({action: 'KnoxedUp.localize.copy.error', from: sFrom, local: sToLocal, error: oCopyError});
+                        fCallback(oCopyError);
+                    } else {
+                        syslog.debug({action: 'KnoxedUp.localize.done', from: sFrom, local: sToLocal});
+                        fCallback(null, sTo);
+                    }
+                });
+            }
+        });
+    };
+
     /**
      *
-     * @param {String}   sFrom     Path of File to Move
-     * @param {String}   sTo       Destination Path of File
-     * @param {Object}   oHeaders
-     * @param {Function} fCallback
+     * @param {String}            sFrom     Path of File to Move
+     * @param {String}            sTo       Destination Path of File
+     * @param {Object|Function}   oHeaders
+     * @param {Function}         [fCallback]
      */
     KnoxedUp.prototype.copyFile = function(sFrom, sTo, oHeaders, fCallback) {
         if (typeof oHeaders == 'function') {
@@ -811,12 +882,8 @@
 
         fCallback = typeof fCallback == 'function' ? fCallback : function() {};
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFrom)) {
-            var sFromLocal = this.getLocalPath(sFrom);
-            var sToLocal   = this.getLocalPath(sTo);
-            fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
-                fsX.copyFile(sFromLocal, sToLocal, fCallback);
-            }.bind(this));
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFrom)) {
+            this.localize(sFrom, sTo, fCallback);
         } else {
             var bHasHeaders = false;
             for (var i in oHeaders) {
@@ -885,13 +952,8 @@
         fCallback = typeof fCallback == 'function' ? fCallback  : function() {};
 
         var sLocalPath = path.join(KnoxedUp.sPath, this.oConfig.bucket, sFrom);
-        if (KnoxedUp.isLocal() && this._localFileExists(sLocalPath)) {
-            var sFromLocal = sLocalPath;
-            var sToLocal   = path.join(KnoxedUp.sPath, sBucket, sTo);
-
-            fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
-                fsX.copyFile(sFromLocal, sToLocal, fCallback);
-            }.bind(this));
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sLocalPath)) {
+            this.localize(sLocalPath, path.join(KnoxedUp.sPath, sBucket, sTo), fCallback);
         } else {
             var oOptions = {
                 'Content-Length': '0',
@@ -928,7 +990,7 @@
     KnoxedUp.prototype.moveFileToBucket = function(sFrom, sBucket, sTo, fCallback) {
         fCallback = typeof fCallback == 'function' ? fCallback  : function() {};
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFrom)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFrom)) {
             var sFromLocal = this.getLocalPath(sFrom);
             var sToLocal   = path.join(KnoxedUp.sPath, sBucket, sTo);
             fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
@@ -958,7 +1020,7 @@
     KnoxedUp.prototype.moveFile = function(sFrom, sTo, fCallback) {
         fCallback = typeof fCallback == 'function' ? fCallback : function() {};
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFrom)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFrom)) {
             var sFromLocal = this.getLocalPath(sFrom);
             var sToLocal   = this.getLocalPath(sTo);
             fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
@@ -1008,7 +1070,7 @@
      * @param {String}   sType     Binary or (?)
      * @param {String}   sCheckHash
      * @param {String|Function}   [sExtension]
-     * @param {Function} fCallback - Path of Temp File
+     * @param {Function} [fCallback] - Path of Temp File
      */
     KnoxedUp.prototype.toTemp = function(sFile, sType, sCheckHash, sExtension, fCallback) {
         if (typeof sExtension == 'function') {
@@ -1021,9 +1083,9 @@
 
         var sTempFile  = fsX.getTmpSync() + sFile.split('/').pop();
 
-        //syslog.debug({action: 'KnoxedUp.toTemp', file: sFile, type: sType, extension: sExtension, temp: sTempFile});
+        syslog.debug({action: 'KnoxedUp.toTemp', file: sFile, type: sType, extension: sExtension, temp: sTempFile, local: this.getLocalPath(sFile)});
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFile)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFile)) {
             this._fromTemp(this.getLocalPath(sFile), sCheckHash, sExtension, fCallback);
         } else {
             this._getCachedFile(sCheckHash, sExtension, function(oCachedError, sCachedFile) {
@@ -1048,11 +1110,16 @@
         var sTimer = syslog.timeStart('KnoxedUp._fromTemp');
         sExtension = KnoxedUp._dotExtension(sExtension);
 
+        var oLockOpts = {
+            retries:    300,
+            wait:       100
+        };
+
         async.auto({
-            hash:           function(fAsyncCallback, oResults) { fsX.hashFile(sTempFile, fAsyncCallback) },
-            check: ['hash', function(fAsyncCallback, oResults) { this._checkHash (oResults.hash, sCheckHash, fAsyncCallback) }.bind(this)],
-            copy:  ['hash', function(fAsyncCallback, oResults) { fsX.copyFile(sTempFile,  fsX.getTmpSync() + oResults.hash + sExtension, fAsyncCallback) }],
-            chmod: ['copy', function(fAsyncCallback, oResults) { fs.chmod(oResults.copy, 0777, fAsyncCallback) }]
+            hash:              function(fAsyncCallback, oResults) { fsX.hashFile(sTempFile, fAsyncCallback)       },
+            check:   ['hash',  function(fAsyncCallback, oResults) { this._checkHash (oResults.hash, sCheckHash, fAsyncCallback) }.bind(this)],
+            copy:    ['hash',  function(fAsyncCallback, oResults) { fsX.copyFile(sTempFile,  fsX.getTmpSync() + oResults.hash + sExtension, fAsyncCallback) }],
+            chmod:   ['copy',  function(fAsyncCallback, oResults) { fs.chmod(oResults.copy, 0777, fAsyncCallback) }]
         }, function(oError, oResults) {
             if (oError) {
                 syslog.error({action: sTimer + '.error', input: sTempFile, error: oError});
@@ -1087,7 +1154,7 @@
     KnoxedUp.prototype._getCachedFile = function(sHash, sExtension, fCallback) {
         return fCallback(null, null);
 
-        //syslog.debug({action: 'KnoxedUp._getCachedFile', hash: sHash, extension: sExtension});
+        syslog.debug({action: 'KnoxedUp._getCachedFile', hash: sHash, extension: sExtension});
 
         sExtension = KnoxedUp._dotExtension(sExtension);
 
@@ -1095,17 +1162,21 @@
         var sDestination = path.join(fsX.getTmpSync(), sHash + sExtension);
         fs.exists(sCachedFile, function(bExists) {
             if (bExists) {
+                syslog.debug({action: 'KnoxedUp._getCachedFile.exists'});
                 fsX.hashFile(sCachedFile, function(oHashError, sFileHash) {
                     if (oHashError) {
+                        syslog.debug({action: 'KnoxedUp._getCachedFile.hash.error', error: oHashError});
                         fCallback(oHashError);
                     } else if (sHash == sFileHash) {
-                        //syslog.debug({action: 'KnoxedUp._getCachedFile.found', file: sDestination});
-                        fCallback(null, sCachedFile, sFileHash);
+                        syslog.debug({action: 'KnoxedUp._getCachedFile.match', cache: sCachedFile, file: sDestination});
+                        fsX.copyFile(sCachedFile, sDestination, fCallback);
                     } else {
+                        syslog.debug({action: 'KnoxedUp._getCachedFile.hash.mismatch'});
                         fCallback(null, null);
                     }
                 }.bind(this));
             } else {
+                syslog.debug({action: 'KnoxedUp._getCachedFile.gone'});
                 fCallback(null, null);
             }
         }.bind(this));
@@ -1118,7 +1189,8 @@
      * @private
      */
     KnoxedUp.prototype._cacheFile = function(sFile, fCallback) {
-        return fCallback(null);
+        return fCallback(null, null);
+
         var sTimer = syslog.timeStart('KnoxedUp._cacheFile');
 
         fsX.mkdirP(KnoxedUp._getTmpCache(), 0777, function(oError, sPath) {
@@ -1162,8 +1234,16 @@
                 syslog.error({action: sTimer + '.error', input: sTempFile, error: oError, hash: sCheckHash, results: oResults});
                 fCallback(oError);
             } else {
-                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.copy});
-                fCallback(null, oResults.move.path, oResults.move.hash);
+                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.move});
+
+                if (KnoxedUp.isLocal()) {
+                    this.localize(oResults.move.path, sFile, function() {
+                        fCallback(null, oResults.move.path, oResults.move.hash);
+                    });
+                } else {
+                    fCallback(null, oResults.move.path, oResults.move.hash);
+                }
+
             }
         }.bind(this));
     };
@@ -1178,7 +1258,7 @@
         fCallback = typeof fCallback == 'function' ? fCallback : function() {};
         sType     = sType || 'binary';
 
-        if (KnoxedUp.isLocal() && this._localFileExists(sFile)) {
+        if (KnoxedUp.isLocal() && this._localFileExistsSync(sFile)) {
             fsX.hashFile(this.getLocalPath(sFile), fCallback);
         } else {
             this.toTemp(sFile, sType, null, function(oError, sTempFile, sHash) {
