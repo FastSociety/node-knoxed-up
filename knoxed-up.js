@@ -13,6 +13,7 @@
         this.iMinimumUploadBitrate      = 500000;
         // if transfers drop below threshold 3 times in a row do something
         this.NBitRateFail = 3;
+        this.aTimeoutLevels = oConfig.TIMEOUTS && oConfig.TIMEOUTS.FILE && oConfig.TIMEOUTS.FILE.KNOXEDUP ? oConfig.TIMEOUTS.FILE.KNOXEDUP : [10, 20, 30, 60, 300];
 
         if (oConfig.AMAZON !== undefined) {
             this.oConfig = {
@@ -24,8 +25,9 @@
             };
 
             // see http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
-            if (oConfig.AMAZON.REGION !== undefined)
-                this.oConfig.region = oConfig.AMAZON.REGION;           
+            if (oConfig.AMAZON.REGION !== undefined) {
+                this.oConfig.region = oConfig.AMAZON.REGION;
+            }
 
             this.sOriginalBucket = oConfig.AMAZON.BUCKET;
 
@@ -69,17 +71,7 @@
             callback: bHasCallback
         };
 
-        var maxTimeOut = 300;
-        if (this.oConfig.DAEMONS) {
-            maxTimeOut = this.oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
-        }
-        var tOut1 = Math.round(0.0333 * maxTimeOut);
-        var tOut2 = Math.round(0.0666 * maxTimeOut);
-        var tOut3 = Math.round(0.1 * maxTimeOut);
-        var tOut4 = Math.round(0.2 * maxTimeOut);
-        var tOut5 = Math.round(0.4 * maxTimeOut);
-        var aTimeoutLevels = [tOut1, tOut2, tOut3, tOut4, tOut5, maxTimeOut];
-
+        var iMaxTimeout    = this.aTimeoutLevels[this.aTimeoutLevels.length - 1];
         var iTimeoutIndex  = 0;
         var iBitrateTimeoutIndex = 0;
 
@@ -138,24 +130,34 @@
         iTimeout = setInterval(function() {
             iTimeoutIndex++;
 
-            switch (true) {
-                
-                case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
-                    syslog.error({action: 'KnoxedUp.timeAlert', error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'), 
-                        oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
-                    break;
-
-                // first & interim warnings
-                case aTimeoutLevels.indexOf(iTimeoutIndex) >= 0:
-                    syslog.warn({action: 'KnoxedUp.timeAlert', warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds', 
-                        oLog: oLog, iLength: iLength, iLengthTotal: iLengthTotal, bps: (iLength*8)/iTimeoutIndex, '__ms': syslog.getTime(sTimer)});
-                    // if a del hasn't completed in 10seconds/first timeout retry somethings up...
-                    if (sCommand == 'del') {
-                        oLog.action += '.tooSlow.retry';
-                        syslog.warn({action: oLog.action, oLog: oLog});
-                        return fRetry('KnoxedUp._command.' + sCommand + '.delTooSlow', new Error('Del action took way too long'));                        
-                    }
-                    break;
+            if (iMaxTimeout <= iTimeoutIndex) {
+                if (iMaxTimeout  % iTimeoutIndex == 0) { // Multiple of the Final Time
+                    syslog.error({
+                        action: 'KnoxedUp.timeAlert',
+                        error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'),
+                        oLog: oLog,
+                        iLength: iLength,
+                        iLengthTotal: iLengthTotal,
+                        bps: (iLength*8)/iTimeoutIndex,
+                        __ms: syslog.getTime(sTimer)
+                    });
+                }
+            } else if (this.aTimeoutLevels.indexOf(iTimeoutIndex) >= 0) { // Warnings
+                syslog.warn({
+                    action: 'KnoxedUp.timeAlert',
+                    warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds',
+                    oLog: oLog,
+                    iLength: iLength,
+                    iLengthTotal: iLengthTotal,
+                    bps: (iLength*8)/iTimeoutIndex,
+                    __ms: syslog.getTime(sTimer)
+                });
+                // if a del hasn't completed in 10seconds/first timeout retry somethings up...
+                if (sCommand == 'del') {
+                    oLog.action += '.tooSlow.retry';
+                    syslog.warn({action: oLog.action, oLog: oLog});
+                    return fRetry('KnoxedUp._command.' + sCommand + '.delTooSlow', new Error('Del action took way too long'));
+                }
             }
         }.bind(this), 1000);
 
@@ -669,26 +671,17 @@
             var iBitrateFail = 0;
             var iLength = 0;
             var iLengthPrev = 0;
-            var maxTimeOut = 300;
-            if (this.oConfig.DAEMONS) {
-                maxTimeOut = this.oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
-            }
-            oConfig.DAEMONS.TIMEOUTS.KNOXEDUP;
-            var tOut1 = Math.round(0.0333 * maxTimeOut);
-            var tOut2 = Math.round(0.0666 * maxTimeOut);
-            var tOut3 = Math.round(0.1 * maxTimeOut);
-            var tOut4 = Math.round(0.2 * maxTimeOut);
-            var tOut5 = Math.round(0.4 * maxTimeOut);
-            var aTimeoutLevels = [tOut1, tOut2, tOut3, tOut4, tOut5, maxTimeOut];
+            var iMaxTimeout    = this.aTimeoutLevels[this.aTimeoutLevels.length - 1];
             var iTimeoutIndex = 0;
             var iBitrateTimeoutIndex = 0;
 
             iTimeout = setInterval(function() {
                 iTimeoutIndex++;
 
-                switch (true) {
-                    // Top
-                    case iTimeoutIndex >= aTimeoutLevels[aTimeoutLevels.length - 1]:
+
+
+                if (iMaxTimeout <= iTimeoutIndex) {
+                    if (iMaxTimeout  % iTimeoutIndex == 0) { // Multiple of the Final Time
                         syslog.error({
                             action: 'KnoxedUp.putStream.timeAlert',
                             error: new Error('We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds'),
@@ -698,22 +691,19 @@
                             bps: (iLength*8)/iTimeoutIndex,
                             '__ms': syslog.getTime(sTimer)
                         });
-                        clearInterval(iTimeout);
-                        /// KILLL MMEEEE!! (Not explicitly killing this upload here, but we've likely gone too far at this point)
-                        break;
 
-                    // first & interim warnings
-                    case aTimeoutLevels.indexOf(iTimeoutIndex) >= 0:
-                        syslog.warn({
-                            action: 'KnoxedUp.putStream.timeAlert',
-                            warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds',
-                            oLog: oLog,
-                            iLength: iLength,
-                            iLengthTotal: oLog.file_size ,
-                            bps: (iLength*8)/iTimeoutIndex,
-                            '__ms': syslog.getTime(sTimer)
-                        });
-                        break;
+                        /// KILLL MMEEEE!! (Not explicitly killing this upload here, but we've likely gone too far at this point)
+                    }
+                } else if (this.aTimeoutLevels.indexOf(iTimeoutIndex) >= 0) { // Warnings
+                    syslog.warn({
+                        action: 'KnoxedUp.putStream.timeAlert',
+                        warning: 'We have been waiting for KnoxedUp for ' + iTimeoutIndex + ' seconds',
+                        oLog: oLog,
+                        iLength: iLength,
+                        iLengthTotal: oLog.file_size ,
+                        bps: (iLength*8)/iTimeoutIndex,
+                        '__ms': syslog.getTime(sTimer)
+                    });
                 }
             }.bind(this), 1000);
 
