@@ -123,7 +123,8 @@ try {
     }
 
 
-    var genBlob = function(length,cb) {
+    var genBlob = function(oOptions,cb) {
+        var length = oOptions.length;
         var aData = [];
         aData.length = length;
         for (var i=0;i < aData.length;i++) {
@@ -143,23 +144,29 @@ try {
     var go = function(nBlobs,nBytes) {
         async.times(nBlobs, 
             function (i, fCallbackAsync) {               
-                var fDone = function(oError, oResult) {
-                    var alreadyCalled = false;
+                var alreadyCalled = false;
+                var fDone = function(oError, i, oResult) {
                     if (!alreadyCalled) {
                         alreadyCalled = true;
-                        fCallbackAsync(oError,oResult);
+                        console.log('for ith blob',i,'about to call fCallbackAsync with oError',oError,'oResult',oResult);
+                        return fCallbackAsync(oError,oResult);
                     }
                     else {
-                        console.log('trying to re-use fCallbackAsync with oError,oResult',oError,oResult);
+                        console.log('trying to re-use fCallbackAsync ith blob',i,'with oError,oResult',oError,oResult);
                     }
                 }
 
-            // many sd videos 500k-1MB range
-                genBlob(nBytes,function(oError1,sHash) {
+                // many sd videos 500k-1MB range
+                var oOptions = {
+                    length : nBytes,
+                    i : i
+                };
+                genBlob(oOptions,function(oError1,sHash) {
+                    var oLocalOptions = oOptions;
                     if (oError1) {
                        console.log('genBlob error returned ',oError1);
-                       console.log('about to call fCallbackAsyn for A i',i);
-                       return fDone(oError1,null);
+                       console.log('about to call fCallbackAsyn for A i',oLocalOptions.i);
+                       return fDone(oError1,oLocalOptions.i,null);
                     }
                     else {
                         var sFrom = './' + sHash;
@@ -169,11 +176,26 @@ try {
                         console.log('go about to call s3.putStream');
                         // putFile never worked
                         // s3.putFile(sFrom, '', {}, function(oError3) {
+
+                        var calledOnce = false;
+                        var fCallMeOnce = function(oError,iBlob,oResult) {
+                            if (!calledOnce) {
+                                calledOnce = true;
+                                console.log('for ith blob',iBlob,'about to call fCallbackAsync with oError',oError,'oResult',oResult);
+                                return fCallbackAsync(oError,oResult);
+                            }
+                            else {
+                                console.log('trying to re-use fCallbackAsync ith blob',iBlob,'with oError,oResult',oError,oResult);
+                            }
+                        }
+
+
                         s3.putStream(sFrom, sTo, {}, function(oError3) {
+                            console.log('returning from s3.putstream ith blob',oLocalOptions.i);
                             if (oError3) {
                                 console.log('s3.putStream returned error',oError3);
-                                console.log('about to call fCallbackAsyn for C i',i);
-                                return fDone(oError3);
+                                console.log('about to call fCallbackAsyn for C i',oLocalOptions.i);
+                                return fCallMeOnce(oError3,oOptions.i);
                             } 
                             else {
                                 console.log('go s3.putStream succeeded sha1hash',sHash);
@@ -181,12 +203,12 @@ try {
                                 fs.unlink(sHash,function(oUnlinkError) {
                                     if (oUnlinkError) {
                                         console.log('error unlinking local file',sHash,oUnlinkError);
-                                        return fDone(oUnlinkError);
+                                        return fCallMeOnce(oUnlinkError,oOptions.i);
                                     }
                                     else {
                                         console.log('go deleted local file',sHash);
-                                        console.log('about to call fCallbackAsyn for D i',i);
-                                        return fDone(null, { file: sHash, hash: sHash });
+                                        console.log('about to call fCallbackAsyn for D i',oLocalOptions.i);
+                                        return fCallMeOnce(null,oOptions.i, { file: sHash, hash: sHash });
                                     }
                                 });
                             }

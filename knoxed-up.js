@@ -640,6 +640,8 @@
             callback: bHasCallback
         };
 
+        var MAX_PUT_RETRIES = 3;
+
         var iTimeout, iBitrateTimeout;
 
         var sTimer = syslog.timeStart(oLog.action, oLog);
@@ -663,7 +665,9 @@
 
                         syslog.timeStop(sTimer, oLog);
                     }
-
+                    if (oError) {
+                        console.log('fDone oError',oError);
+                    }
                     fFinishedCallback(oError, sTo);
                 });
             };
@@ -726,7 +730,7 @@
                         var fOriginalCallback = fCallback;
                         fCallback = function(oError, oReturn) {
                             syslog.warn({
-                                action: 'KnoxedUp.putStream.double_callback',
+                                action: 'KnoxedUp.putStream.bitrate.double_callback',
                                 error: 'callback is being attempted to be called more than once',
                                 oError: oError,
                                 oReturn: oReturn
@@ -743,6 +747,9 @@
 
             this._setSizeAndHashHeaders(sFrom, oHeaders, function(oError, oPreppedHeaders) {
                 if (oError) {
+                    if (oError) {
+                        console.log('KnoxedUp.putStream setSizeAndHashHeaders call to fDone coming',oError);
+                    }
                     fDone(fCallback,oError);
                 } else {
                     if (oPreppedHeaders['Content-Length'] !== undefined) {
@@ -751,6 +758,9 @@
 
                     fsX.readLock(sFrom, {retries: 300, wait: 100}, function(oLockError) {
                         if (oLockError) {
+                            if (oLockError) {
+                                console.log('KnoxedUp.putStream fsX.readLock call to fDone coming',oLockError);
+                            }
                             return fDone(fCallback, oLockError);
                         }
 
@@ -760,10 +770,16 @@
                             oStream.destroy();
 
                             oLog.error = new Error(oError);
+                            if (oError) {
+                                console.log('KnoxedUp.putStream oStream.on error call to fDone coming',oError);
+                            }                            
                             fDone(fCallback, oLog.error);
                         });
 
                         var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
+                            if (iRetries < 2) {
+                                oError = 'fictional s3 error created';
+                            }                            
                             oStream.destroy();
                             oLog.status = -1;
                             if (oResponse) {
@@ -771,31 +787,60 @@
                             }
 
                             if (oError) {
-                                if (iRetries > 3) {
+                                if (iRetries > MAX_PUT_RETRIES) {
                                     oLog.action += '.request.hang_up.retry.max';
                                     oLog.error   = oError;
                                     syslog.error(oLog);
+                                    if (oLog.error) {
+                                        console.log('KnoxedUp.putStream iRetries > MAX PUT RETRIES error call to fDone coming',oLog.error);
+                                    }                                                                
                                     fDone(fCallback, oLog.error);
                                 } else {
                                     oLog.action += '.request.hang_up.retry';
                                     oLog.error   = (util.isError(oError)) ? new Error(oError.message) : oError;
                                     syslog.warn(oLog);
-                                    this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
+
+                                    var fOriginalCallback = fCallback;
+                                    fCallback = function(oError, oReturn) {
+                                        syslog.warn({
+                                            action: 'KnoxedUp.putStream.retry.double_callback',
+                                            error: 'callback is being attempted to be called more than once',
+                                            oError: oError,
+                                            oReturn: oReturn
+                                        });
+                                    };
+
+                                    return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
                                 }
                             } else if(oResponse.statusCode >= 400) {
                                 oLog.error   = new Error('S3 Error Code ' + oResponse.statusCode);
                                 oLog.action += '.request.500.retry';
-                                if (iRetries > 3) {
+                                if (iRetries > MAX_PUT_RETRIES) {
                                     oLog.action += '.max';
+                                    if (oLog.error) {
+                                        console.log('KnoxedUp.putStream status code >= 400 & iRetries > MAX PUT RETRIES error call to fDone coming',oLog.error);
+                                    }                                                                                                    
                                     fDone(fCallback, oLog.error);
                                 } else {
                                     syslog.warn(oLog);
                                     clearInterval(iTimeout);
                                     clearInterval(iBitrateTimeout);
-                                    this.putStream(sFrom, sTo, oHeaders, fCallback, iRetries + 1);
+
+                                    var fOriginalCallback = fCallback;
+                                    fCallback = function(oError, oReturn) {
+                                        syslog.warn({
+                                            action: 'KnoxedUp.putStream.require.500.double_callback',
+                                            error: 'callback is being attempted to be called more than once',
+                                            oError: oError,
+                                            oReturn: oReturn
+                                        });
+                                    };
+
+                                    return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
                                 }
                             } else {
                                 oLog.action += '.done';
+                                console.log('KnoxedUp.putStream no error call to fDone coming');
                                 fDone(fCallback, null, sTo);
                             }
                         }.bind(this));
