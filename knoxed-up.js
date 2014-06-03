@@ -766,9 +766,9 @@
 
                         var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
                             // useful for debugging s3 errors, force em
-                            if (iRetries < 2) {
-                                oError = 'fictional s3 error created';
-                            }                            
+                            // if (iRetries < 2) {
+                            //     oError = 'fictional s3 error created';
+                            // }                            
                             oStream.destroy();
                             oLog.status = -1;
                             if (oResponse) {
