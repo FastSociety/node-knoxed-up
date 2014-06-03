@@ -665,9 +665,6 @@
 
                         syslog.timeStop(sTimer, oLog);
                     }
-                    // if (oError) {
-                    //     console.log('fDone oError',oError);
-                    // }
                     fFinishedCallback(oError, sTo);
                 });
             };
@@ -747,9 +744,6 @@
 
             this._setSizeAndHashHeaders(sFrom, oHeaders, function(oError, oPreppedHeaders) {
                 if (oError) {
-                    // if (oError) {
-                    //     console.log('KnoxedUp.putStream setSizeAndHashHeaders call to fDone coming',oError);
-                    // }
                     fDone(fCallback,oError);
                 } else {
                     if (oPreppedHeaders['Content-Length'] !== undefined) {
@@ -758,9 +752,6 @@
 
                     fsX.readLock(sFrom, {retries: 300, wait: 100}, function(oLockError) {
                         if (oLockError) {
-                            // if (oLockError) {
-                            //     console.log('KnoxedUp.putStream fsX.readLock call to fDone coming',oLockError);
-                            // }
                             return fDone(fCallback, oLockError);
                         }
 
@@ -770,17 +761,14 @@
                             oStream.destroy();
 
                             oLog.error = new Error(oError);
-                            // if (oError) {
-                            //     console.log('KnoxedUp.putStream oStream.on error call to fDone coming',oError);
-                            // }                            
                             fDone(fCallback, oLog.error);
                         });
 
                         var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
-                            // useful for debugging s3 errors, force em!
-                            // if (iRetries < 2) {
-                            //     oError = 'fictional s3 error created';
-                            // }                            
+                            // useful for debugging s3 errors, force em
+                            if (iRetries < 2) {
+                                oError = 'fictional s3 error created';
+                            }                            
                             oStream.destroy();
                             oLog.status = -1;
                             if (oResponse) {
@@ -792,14 +780,14 @@
                                     oLog.action += '.request.hang_up.retry.max';
                                     oLog.error   = oError;
                                     syslog.error(oLog);
-                                    // if (oLog.error) {
-                                    //     console.log('KnoxedUp.putStream iRetries > MAX PUT RETRIES error call to fDone coming',oLog.error);
-                                    // }                                                                
                                     fDone(fCallback, oLog.error);
                                 } else {
                                     oLog.action += '.request.hang_up.retry';
                                     oLog.error   = (util.isError(oError)) ? new Error(oError.message) : oError;
                                     syslog.warn(oLog);
+
+                                    clearInterval(iTimeout);
+                                    clearInterval(iBitrateTimeout);                                    
 
                                     var fOriginalCallback = fCallback;
                                     fCallback = function(oError, oReturn) {
@@ -818,9 +806,6 @@
                                 oLog.action += '.request.500.retry';
                                 if (iRetries > MAX_PUT_RETRIES) {
                                     oLog.action += '.max';
-                                    // if (oLog.error) {
-                                    //     console.log('KnoxedUp.putStream status code >= 400 & iRetries > MAX PUT RETRIES error call to fDone coming',oLog.error);
-                                    // }                                                                                                    
                                     fDone(fCallback, oLog.error);
                                 } else {
                                     syslog.warn(oLog);
@@ -841,7 +826,6 @@
                                 }
                             } else {
                                 oLog.action += '.done';
-                                // console.log('KnoxedUp.putStream no error call to fDone coming');
                                 fDone(fCallback, null, sTo);
                             }
                         }.bind(this));
