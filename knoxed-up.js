@@ -676,10 +676,25 @@
             var iTimeoutIndex = 0;
             var iBitrateTimeoutIndex = 0;
 
+            // used a few times throughput putStream
+            var fRetry = function(sAction,sError,sFrom,sTo,oHeaders,iRetries) {
+                clearInterval(iBitrateTimeout);
+                clearInterval(iTimeout);
+                var fOriginalCallback = fCallback;
+                fCallback = function(oError, oReturn) {
+                    syslog.warn({
+                        action: sAction,
+                        error: sError,
+                        oError: oError,
+                        oReturn: oReturn
+                    });
+                };
+                return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);                
+            }.bind(this);            
+
+            // start timeout counter
             iTimeout = setInterval(function() {
                 iTimeoutIndex++;
-
-
 
                 if (iMaxTimeout <= iTimeoutIndex) {
                     if (iMaxTimeout  % iTimeoutIndex == 0) { // Multiple of the Final Time
@@ -708,7 +723,7 @@
                 }
             }.bind(this), 1000);
 
-
+            // start bitrate checker
             iBitrateTimeout = setInterval(function() {
                 iBitrateTimeoutIndex++;
 
@@ -722,18 +737,9 @@
                         oLog.action += '.bitrate.retry';
                         oLog.bps = NDeltaBps;
                         syslog.warn(oLog);
-                        clearInterval(iBitrateTimeout);
-                        clearInterval(iTimeout);
-                        var fOriginalCallback = fCallback;
-                        fCallback = function(oError, oReturn) {
-                            syslog.warn({
-                                action: 'KnoxedUp.putStream.bitrate.double_callback',
-                                error: 'callback is being attempted to be called more than once',
-                                oError: oError,
-                                oReturn: oReturn
-                            });
-                        };
-                        return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
+                        return fRetry('KnoxedUp.putStream.bitrate.double_callback',
+                            'callback is being attempted to be called more than once',
+                            sFrom,sTo,oHeaders,iRetries);
                     }
                 }
                 else {
@@ -741,6 +747,7 @@
                 }
 
             }.bind(this), 1000);
+
 
             this._setSizeAndHashHeaders(sFrom, oHeaders, function(oError, oPreppedHeaders) {
                 if (oError) {
@@ -767,7 +774,8 @@
                         var oRequest = this.Client.putStream(oStream, sTo, oPreppedHeaders, function(oError, oResponse) {
                             // useful for debugging s3 errors, force em
                             // if (iRetries < 2) {
-                            //     oError = 'fictional s3 error created';
+                            //     // oError = 'fictional s3 error created';
+                            //     oResponse.statusCode = 400;
                             // }                            
                             oStream.destroy();
                             oLog.status = -1;
@@ -785,21 +793,9 @@
                                     oLog.action += '.request.hang_up.retry';
                                     oLog.error   = (util.isError(oError)) ? new Error(oError.message) : oError;
                                     syslog.warn(oLog);
-
-                                    clearInterval(iTimeout);
-                                    clearInterval(iBitrateTimeout);                                    
-
-                                    var fOriginalCallback = fCallback;
-                                    fCallback = function(oError, oReturn) {
-                                        syslog.warn({
-                                            action: 'KnoxedUp.putStream.retry.double_callback',
-                                            error: 'callback is being attempted to be called more than once',
-                                            oError: oError,
-                                            oReturn: oReturn
-                                        });
-                                    };
-
-                                    return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
+                                    return fRetry('KnoxedUp.putStream.retry.double_callback',
+                                        'callback is being attempted to be called more than once',
+                                        sFrom,sTo,oHeaders,iRetries);
                                 }
                             } else if(oResponse.statusCode >= 400) {
                                 oLog.error   = new Error('S3 Error Code ' + oResponse.statusCode);
@@ -809,20 +805,9 @@
                                     fDone(fCallback, oLog.error);
                                 } else {
                                     syslog.warn(oLog);
-                                    clearInterval(iTimeout);
-                                    clearInterval(iBitrateTimeout);
-
-                                    var fOriginalCallback = fCallback;
-                                    fCallback = function(oError, oReturn) {
-                                        syslog.warn({
-                                            action: 'KnoxedUp.putStream.require.500.double_callback',
-                                            error: 'callback is being attempted to be called more than once',
-                                            oError: oError,
-                                            oReturn: oReturn
-                                        });
-                                    };
-
-                                    return this.putStream(sFrom, sTo, oHeaders, fOriginalCallback, iRetries + 1);
+                                    return fRetry('KnoxedUp.putStream.require.500.double_callback',
+                                        'callback is being attempted to be called more than once',
+                                        sFrom,sTo,oHeaders,iRetries);
                                 }
                             } else {
                                 oLog.action += '.done';
