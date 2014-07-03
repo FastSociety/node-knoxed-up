@@ -337,7 +337,7 @@
                 }
 
                 var oToFile  = fs.createWriteStream(sToFile, {
-                    flags:    'w',
+                    flags:    'w'
                     //encoding: sType
                 });
 
@@ -481,7 +481,6 @@
      */
     KnoxedUp.prototype.getFileList = function(sPrefix, iMax, fCallback) {
         fCallback  = typeof fCallback == 'function' ? fCallback  : function() {};
-        fError     = typeof fError    == 'function' ? fError     : function() {};
 
         var parser    = new xml2js.Parser();
 
@@ -566,6 +565,77 @@
                     }.bind(this));
                 }
             }.bind(this));
+        }
+    };
+
+    /**
+     *
+     * @param {String}   sPrefix   Path of folder to list
+     * @param {Function} fCallback Array of Objects in that folder
+     */
+    KnoxedUp.prototype.getPrefixSize = function(sPrefix, fCallback) {
+        fCallback  = typeof fCallback == 'function' ? fCallback  : function() {};
+
+        var parser    = new xml2js.Parser();
+
+        if (KnoxedUp.isLocal()) {
+            fCallback(new Error ('No Local Version of This Method'));
+        } else {
+            var oReturn = {
+                size:  0,
+                count: 0
+            };
+
+            var getResults = function(iStart) {
+                this._get('/?prefix=' + sPrefix + '&max-keys=1000&marker=' + iStart, 'utf-8', {}, function(oError, oResponse, sData) {
+                    var iStatusCode = -1;
+                    if (oResponse) {
+                        iStatusCode = oResponse.statusCode;
+                    }
+                    syslog.debug({action: 'KnoxedUp.getFileList', status: iStatusCode});
+
+                    if (oError) {
+                        syslog.error({action: 'KnoxedUp.getFileList.error', error:oError});
+                        fCallback(oError);
+                    } else {
+                        parser.parseString(sData, function (oError, oResult) {
+                            if (oError) {
+                                fCallback(oError);
+                            } else {
+                                if (oResult.ListBucketResult !== undefined) {
+                                    oResult = oResult.ListBucketResult;
+                                }
+
+                                if (oResult.Contents !== undefined) {
+                                    if (Array.isArray(oResult.Contents)) {
+                                        for (var i in oResult.Contents) {
+                                            oReturn.size += parseInt(oResult.Contents[i].Size, 10);
+                                            oReturn.count++;
+                                        }
+                                    } else {
+                                        if (oResult.Contents.Key) {
+                                            oReturn.size += parseInt(oResult.Contents.Size, 10);
+                                            oReturn.count++;
+                                        }
+                                    }
+                                }
+
+                                if (Array.isArray(oResult.IsTruncated)) {
+                                    oResult.IsTruncated = oResult.IsTruncated[0];
+                                }
+
+                                if (oResult.IsTruncated == 'true') {
+                                    getResults(iStart + 1000)
+                                } else {
+                                    fCallback(null, oReturn);
+                                }
+                            }
+                        });
+                    }
+                });
+            }.bind(this);
+
+            getResults(0);
         }
     };
 
