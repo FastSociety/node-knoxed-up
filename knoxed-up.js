@@ -1472,6 +1472,20 @@
 
     /**
      *
+     * @param {String}      sPrefix    String to Search Bucket for
+     * @param {String}      sType      Binary or (?)
+     * @param {Function}    fCallback
+     */
+    KnoxedUp.prototype.concatFilesMatchingPrefix = function(sPrefix, sType, fCallback) {
+        this.filesToTempByPrefix(sPrefix, sType, function(oError, aDownloadedFiles) {
+            syslog.debug({action: 'KnoxedUp.concatFilesMatchingPrefix', prefix: sPrefix, type: sType, files: aDownloadedFiles});
+
+            fsX.concat(aDownloadedFiles, fCallback);
+        });
+    };
+
+    /**
+     *
      * @param {Object}   oFiles    Object of file paths to download to temp with file hashes as the key
      * @param {String}   sType     Binary or (?)
      * @param {String}   sExtension
