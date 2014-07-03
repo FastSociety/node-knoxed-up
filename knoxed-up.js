@@ -1335,6 +1335,40 @@
 
     /**
      *
+     * @param {String} sFile
+     * @param {String} sType
+     * @param {Function} fCallback
+     * @private
+     */
+    KnoxedUp.prototype._toTempNoCheck = function(sFile, sType, fCallback) {
+        var sTimer    = syslog.timeStart('KnoxedUp._toTemp');
+
+        var sTempFile = fsX.getTmpSync() + 'toTemp-' + Math.random().toString(36).substring(8) + '-';
+
+        async.auto({
+            get:             function(fAsyncCallback, oResults) { this.getFile(sFile, sTempFile, sType, fAsyncCallback) }.bind(this),
+            move:  ['get',   function(fAsyncCallback, oResults) { fsX.moveFileToHash(oResults.get, fsX.getTmpSync(), fAsyncCallback) }]
+        }, function(oError, oResults) {
+            if (oError) {
+                syslog.error({action: sTimer + '.error', input: sTempFile, error: oError, results: oResults});
+                fCallback(oError);
+            } else {
+                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.move});
+
+                if (KnoxedUp.isLocal()) {
+                    this.localize(oResults.move.path, sFile, function() {
+                        fCallback(null, oResults.move.path, oResults.move.hash);
+                    });
+                } else {
+                    fCallback(null, oResults.move.path, oResults.move.hash);
+                }
+
+            }
+        }.bind(this));
+    };
+
+    /**
+     *
      * @param {String}   sFile     Path to File to Download
      * @param {String}   sType     Binary or (?)
      * @param {Function} fCallback - Path of Temp File
@@ -1417,6 +1451,22 @@
             }
 
             fCallback(oError, oTempFiles);
+        }.bind(this));
+    };
+
+    /**
+     *
+     * @param {String}      sPrefix    String to Search Bucket for
+     * @param {String}      sType      Binary or (?)
+     * @param {Function}    fCallback
+     */
+    KnoxedUp.prototype.filesToTempByPrefix = function(sPrefix, sType, fCallback) {
+        this.getFileList(sPrefix, 1000, function (oError, aFiles) {
+            async.map(aFiles, function (sFile, fCallbackAsync) {
+                this._toTempNoCheck(sFile, sType, function (oToTempError, sPath, sHash) {
+                    fCallbackAsync(oToTempError, sPath);
+                });
+            }.bind(this), fCallback);
         }.bind(this));
     };
 
