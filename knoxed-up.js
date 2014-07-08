@@ -1337,15 +1337,16 @@
 
     /**
      *
+     * @param {String} sTempPath
      * @param {String} sFile
      * @param {String} sType
      * @param {Function} fCallback
      * @private
      */
-    KnoxedUp.prototype._toTempNoCheck = function(sFile, sType, fCallback) {
-        var sTimer    = syslog.timeStart('KnoxedUp._toTemp');
+    KnoxedUp.prototype._toTempNoCheck = function(sTempPath, sFile, sType, fCallback) {
+        var sTimer    = syslog.timeStart('KnoxedUp._toTempNoCheck');
 
-        var sTempFile = fsX.getTmpSync() + 'toTemp-' + Math.random().toString(36).substring(8) + '-';
+        var sTempFile = sTempPath + 'toTemp-' + Math.random().toString(36).substring(8) + '-';
 
         async.auto({
             get:             function(fAsyncCallback, oResults) { this.getFile(sFile, sTempFile, sType, fAsyncCallback) }.bind(this),
@@ -1458,14 +1459,15 @@
 
     /**
      *
+     * @param {String}      sTempPath  Path to Download files to
      * @param {String}      sPrefix    String to Search Bucket for
      * @param {String}      sType      Binary or (?)
      * @param {Function}    fCallback
      */
-    KnoxedUp.prototype.filesToTempByPrefix = function(sPrefix, sType, fCallback) {
+    KnoxedUp.prototype._filesToPathByPrefix = function(sTempPath, sPrefix, sType, fCallback) {
         this.getFileList(sPrefix, 1000, function (oError, aFiles) {
             async.map(aFiles, function (sFile, fCallbackAsync) {
-                this._toTempNoCheck(sFile, sType, function (oToTempError, sPath, sHash) {
+                this._toTempNoCheck(sTempPath, sFile, sType, function (oToTempError, sPath, sHash) {
                     fCallbackAsync(oToTempError, sPath);
                 });
             }.bind(this), fCallback);
@@ -1489,15 +1491,16 @@
 
     /**
      *
+     * @param {String}      sTempPath  Path to download files to
      * @param {String}      sPrefix    String to Search Bucket for
      * @param {String}      sType      Binary or (?)
      * @param {Function}    fCallback
      */
-    KnoxedUp.prototype.concatFilesMatchingPrefix = function(sPrefix, sType, fCallback) {
-        this.filesToTempByPrefix(sPrefix, sType, function(oError, aDownloadedFiles) {
-            syslog.debug({action: 'KnoxedUp.concatFilesMatchingPrefix', prefix: sPrefix, type: sType, files: aDownloadedFiles});
+    KnoxedUp.prototype.concatFilesMatchingPrefix = function(sTempPath, sPrefix, sType, fCallback) {
+        this._filesToPathByPrefix(sTempPath, sPrefix, sType, function(oError, aDownloadedFiles) {
+            syslog.debug({action: 'KnoxedUp.concatFilesMatchingPrefix', path: sTempPath, prefix: sPrefix, type: sType, files: aDownloadedFiles});
 
-            fsX.concat(aDownloadedFiles, fCallback);
+            fsX.concat(sTempPath, aDownloadedFiles, fCallback);
         });
     };
 
