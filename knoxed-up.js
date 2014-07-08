@@ -911,7 +911,9 @@
      * @param {Function} fCallback
      */
     KnoxedUp.prototype.deleteFile = function(sFile, fCallback) {
-        this._delete(sFile, {}, fCallback);
+        this._delete(sFile, {}, function(oError, oResponse, sData, iAttempts) {
+            fCallback(oError, sData);
+        });
     };
 
     /**
@@ -1467,6 +1469,21 @@
                     fCallbackAsync(oToTempError, sPath);
                 });
             }.bind(this), fCallback);
+        }.bind(this));
+    };
+
+    /**
+     *
+     * @param {String}      sPrefix    String to Search Bucket for
+     * @param {Function}    fCallback
+     */
+    KnoxedUp.prototype.deleteByPrefix = function(sPrefix, fCallback) {
+        if (sPrefix.indexOf('pending/89') != 0) {
+            return fCallback(new Error('Only allowed for pending folder currently'));
+        }
+
+        this.getFileList(sPrefix, 100, function (oError, aFiles) {
+            async.map(aFiles, this.deleteFile.bind(this), fCallback);
         }.bind(this));
     };
 
