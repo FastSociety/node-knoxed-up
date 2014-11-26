@@ -1170,7 +1170,7 @@
 
         var sTempFile  = fsX.getTmpSync() + sFile.split('/').pop();
 
-        syslog.debug({action: 'KnoxedUp.toTemp', file: sFile, type: sType, extension: sExtension, temp: sTempFile, local: this.getLocalPath(sFile)});
+        syslog.debug({action: 'KnoxedUp.toTemp', file: sFile, type: sType, extension: sExtension, temp: sTempFile, checkHash: sCheckHash, local: this.getLocalPath(sFile)});
 
         if (KnoxedUp.isLocal() && this._localFileExistsSync(sFile)) {
             this._fromTemp(this.getLocalPath(sFile), sCheckHash, sExtension, fCallback);
@@ -1308,7 +1308,7 @@
      * @private
      */
     KnoxedUp.prototype._toTemp = function(sTempFile, sFile, sType, sCheckHash, sExtension, fCallback) {
-        var sTimer      = syslog.timeStart('KnoxedUp._toTemp');
+        var sTimer      = syslog.timeStart('KnoxedUp._toTemp', {temp: sTempFile, file: sFile, hash: sCheckHash, extension: sExtension});
             sExtension  = KnoxedUp._dotExtension(sExtension);
 
         async.auto({
@@ -1437,6 +1437,8 @@
                 file: oFiles[sHash]
             });
         }
+
+        syslog.debug({action: 'KnoxedUp.filesToTemp', downloads: aDownloads});
 
         var oTempFiles = {};
         async.forEach(aDownloads, function (oFile, fCallbackAsync) {
