@@ -223,9 +223,9 @@
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.hang_up', new Error('S3 Error Code ' + oResponse.statusCode));
             } else if (oResponse.statusCode > 500) {
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.error',   new Error('S3 Error Code ' + oResponse.statusCode));
-            } else if(oResponse.statusCode == 404) {
+            } else if(oResponse.statusCode == 404 && sCommand != 'head') {
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.error',   new Error('File Not Found'), 4);
-            } else if(oResponse.statusCode > 399) {
+            } else if(oResponse.statusCode != 404 && oResponse.statusCode > 399) {
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.error',   new Error('S3 Error Code ' + oResponse.statusCode), 4);
             } else {
                 oResponse.setEncoding(sType);
