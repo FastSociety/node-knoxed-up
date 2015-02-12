@@ -936,7 +936,7 @@
     KnoxedUp.prototype.localize = function(sFrom, sTo, fCallback) {
         var sToLocal = this.getLocalPath(sTo);
         syslog.debug({action: 'KnoxedUp.localize', from: sFrom, local: sToLocal});
-        fsX.mkdirP(path.dirname(sToLocal), 0777, function(oError) {
+        fsX.mkdirP(path.dirname(sToLocal), '0777', function(oError) {
             if (oError) {
                 syslog.error({action: 'KnoxedUp.localize.error', from: sFrom, local: sToLocal, error: oError});
                 fCallback(oError)
@@ -1080,7 +1080,7 @@
         if (KnoxedUp.isLocal() && this._localFileExistsSync(sFrom)) {
             var sFromLocal = this.getLocalPath(sFrom);
             var sToLocal   = path.join(KnoxedUp.sPath, sBucket, sTo);
-            fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
+            fsX.mkdirP(path.dirname(sToLocal), '0777', function() {
                 fsX.moveFile(sFromLocal, sToLocal, fCallback);
             }.bind(this));
         } else {
@@ -1110,7 +1110,7 @@
         if (KnoxedUp.isLocal() && this._localFileExistsSync(sFrom)) {
             var sFromLocal = this.getLocalPath(sFrom);
             var sToLocal   = this.getLocalPath(sTo);
-            fsX.mkdirP(path.dirname(sToLocal), 0777, function() {
+            fsX.mkdirP(path.dirname(sToLocal), '0777', function() {
                 fsX.moveFile(sFromLocal, sToLocal, fCallback);
             }.bind(this));
         } else {
@@ -1280,7 +1280,7 @@
 
         var sTimer = syslog.timeStart('KnoxedUp._cacheFile');
 
-        fsX.mkdirP(KnoxedUp._getTmpCache(), 0777, function(oError, sPath) {
+        fsX.mkdirP(KnoxedUp._getTmpCache(), '0777', function(oError, sPath) {
             if (oError) {
                 fCallback(oError);
             } else {
