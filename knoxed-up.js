@@ -43,6 +43,11 @@
             this.sOriginalBucket = oConfig.bucket;
         }
 
+        if (oConfig.AMAZON.MAX_ASYNCHRONOUS_DOWNLOAD != undefined)
+            this.oConfig.maxAsyncDownloads = oConfig.AMAZON.MAX_ASYNCHRONOUS_DOWNLOAD;
+        else
+            this.oConfig.maxAsyncDownloads = 100;
+
         this.Client  = Knox.createClient(this.oConfig);
     };
 
@@ -223,9 +228,9 @@
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.hang_up', new Error('S3 Error Code ' + oResponse.statusCode));
             } else if (oResponse.statusCode > 500) {
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.error',   new Error('S3 Error Code ' + oResponse.statusCode));
-            } else if(oResponse.statusCode == 404) {
+            } else if(oResponse.statusCode == 404 && sCommand != 'head') {
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.error',   new Error('File Not Found'), 4);
-            } else if(oResponse.statusCode > 399) {
+            } else if(oResponse.statusCode != 404 && oResponse.statusCode > 399) {
                 return fRetry('KnoxedUp._command.' + sCommand + '.request.error',   new Error('S3 Error Code ' + oResponse.statusCode), 4);
             } else {
                 oResponse.setEncoding(sType);
@@ -279,7 +284,7 @@
     };
 
     KnoxedUp.prototype.getFile = function (sFilename, sToFile, sType, fCallback) {
-        syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
+        syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType, bucket: this.oConfig.bucket, originalBucket: this.sOriginalBucket});
 
         var sTimer      = syslog.timeStart('KnoxedUp.getFile');
         var bError      = false;
@@ -337,7 +342,7 @@
                 }
 
                 var oToFile  = fs.createWriteStream(sToFile, {
-                    flags:    'w',
+                    flags:    'w'
                     //encoding: sType
                 });
 
@@ -481,7 +486,6 @@
      */
     KnoxedUp.prototype.getFileList = function(sPrefix, iMax, fCallback) {
         fCallback  = typeof fCallback == 'function' ? fCallback  : function() {};
-        fError     = typeof fError    == 'function' ? fError     : function() {};
 
         var parser    = new xml2js.Parser();
 
@@ -566,6 +570,77 @@
                     }.bind(this));
                 }
             }.bind(this));
+        }
+    };
+
+    /**
+     *
+     * @param {String}   sPrefix   Path of folder to list
+     * @param {Function} fCallback Array of Objects in that folder
+     */
+    KnoxedUp.prototype.getPrefixSize = function(sPrefix, fCallback) {
+        fCallback  = typeof fCallback == 'function' ? fCallback  : function() {};
+
+        var parser    = new xml2js.Parser();
+
+        if (KnoxedUp.isLocal()) {
+            fCallback(new Error ('No Local Version of This Method'));
+        } else {
+            var oReturn = {
+                size:  0,
+                count: 0
+            };
+
+            var getResults = function(iStart) {
+                this._get('/?prefix=' + sPrefix + '&max-keys=1000&marker=' + iStart, 'utf-8', {}, function(oError, oResponse, sData) {
+                    var iStatusCode = -1;
+                    if (oResponse) {
+                        iStatusCode = oResponse.statusCode;
+                    }
+                    syslog.debug({action: 'KnoxedUp.getFileList', status: iStatusCode});
+
+                    if (oError) {
+                        syslog.error({action: 'KnoxedUp.getFileList.error', error:oError});
+                        fCallback(oError);
+                    } else {
+                        parser.parseString(sData, function (oError, oResult) {
+                            if (oError) {
+                                fCallback(oError);
+                            } else {
+                                if (oResult.ListBucketResult !== undefined) {
+                                    oResult = oResult.ListBucketResult;
+                                }
+
+                                if (oResult.Contents !== undefined) {
+                                    if (Array.isArray(oResult.Contents)) {
+                                        for (var i in oResult.Contents) {
+                                            oReturn.size += parseInt(oResult.Contents[i].Size, 10);
+                                            oReturn.count++;
+                                        }
+                                    } else {
+                                        if (oResult.Contents.Key) {
+                                            oReturn.size += parseInt(oResult.Contents.Size, 10);
+                                            oReturn.count++;
+                                        }
+                                    }
+                                }
+
+                                if (Array.isArray(oResult.IsTruncated)) {
+                                    oResult.IsTruncated = oResult.IsTruncated[0];
+                                }
+
+                                if (oResult.IsTruncated == 'true') {
+                                    getResults(iStart + 1000)
+                                } else {
+                                    fCallback(null, oReturn);
+                                }
+                            }
+                        });
+                    }
+                });
+            }.bind(this);
+
+            getResults(0);
         }
     };
 
@@ -841,7 +916,9 @@
      * @param {Function} fCallback
      */
     KnoxedUp.prototype.deleteFile = function(sFile, fCallback) {
-        this._delete(sFile, {}, fCallback);
+        this._delete(sFile, {}, function(oError, oResponse, sData, iAttempts) {
+            fCallback(oError, sData);
+        });
     };
 
     /**
@@ -1265,6 +1342,41 @@
 
     /**
      *
+     * @param {String} sTempPath
+     * @param {String} sFile
+     * @param {String} sType
+     * @param {Function} fCallback
+     * @private
+     */
+    KnoxedUp.prototype._toTempNoCheck = function(sTempPath, sFile, sType, fCallback) {
+        var sTimer    = syslog.timeStart('KnoxedUp._toTempNoCheck');
+
+        var sTempFile = sTempPath + 'toTemp-' + Math.random().toString(36).substring(8) + '-';
+
+        async.auto({
+            get:             function(fAsyncCallback, oResults) { this.getFile(sFile, sTempFile, sType, fAsyncCallback) }.bind(this),
+            move:  ['get',   function(fAsyncCallback, oResults) { fsX.moveFileToHash(oResults.get, fsX.getTmpSync(), fAsyncCallback) }]
+        }, function(oError, oResults) {
+            if (oError) {
+                syslog.error({action: sTimer + '.error', input: sTempFile, error: oError, results: oResults});
+                fCallback(oError);
+            } else {
+                syslog.timeStop(sTimer, {input: sTempFile, hash: oResults.hash, file: oResults.move});
+
+                if (KnoxedUp.isLocal()) {
+                    this.localize(oResults.move.path, sFile, function() {
+                        fCallback(null, oResults.move.path, oResults.move.hash);
+                    });
+                } else {
+                    fCallback(null, oResults.move.path, oResults.move.hash);
+                }
+
+            }
+        }.bind(this));
+    };
+
+    /**
+     *
      * @param {String}   sFile     Path to File to Download
      * @param {String}   sType     Binary or (?)
      * @param {Function} fCallback - Path of Temp File
@@ -1352,6 +1464,53 @@
 
     /**
      *
+     * @param {String}      sTempPath  Path to Download files to
+     * @param {String}      sPrefix    String to Search Bucket for
+     * @param {String}      sType      Binary or (?)
+     * @param {Function}    fCallback
+     */
+    KnoxedUp.prototype._filesToPathByPrefix = function(sTempPath, sPrefix, sType, fCallback) {
+        this.getFileList(sPrefix, 1000, function (oError, aFiles) {
+            async.map(aFiles, function (sFile, fCallbackAsync) {
+                this._toTempNoCheck(sTempPath, sFile, sType, function (oToTempError, sPath, sHash) {
+                    fCallbackAsync(oToTempError, sPath);
+                });
+            }.bind(this), fCallback);
+        }.bind(this));
+    };
+
+    /**
+     *
+     * @param {String}      sPrefix    String to Search Bucket for
+     * @param {Function}    fCallback
+     */
+    KnoxedUp.prototype.deleteByPrefix = function(sPrefix, fCallback) {
+        if (sPrefix.indexOf('pending/89') != 0) {
+            return fCallback(new Error('Only allowed for pending folder currently'));
+        }
+
+        this.getFileList(sPrefix, 100, function (oError, aFiles) {
+            async.map(aFiles, this.deleteFile.bind(this), fCallback);
+        }.bind(this));
+    };
+
+    /**
+     *
+     * @param {String}      sTempPath  Path to download files to
+     * @param {String}      sPrefix    String to Search Bucket for
+     * @param {String}      sType      Binary or (?)
+     * @param {Function}    fCallback
+     */
+    KnoxedUp.prototype.concatFilesMatchingPrefix = function(sTempPath, sPrefix, sType, fCallback) {
+        this._filesToPathByPrefix(sTempPath, sPrefix, sType, function(oError, aDownloadedFiles) {
+            syslog.debug({action: 'KnoxedUp.concatFilesMatchingPrefix', path: sTempPath, prefix: sPrefix, type: sType, files: aDownloadedFiles});
+
+            fsX.concat(sTempPath, aDownloadedFiles, fCallback);
+        });
+    };
+
+    /**
+     *
      * @param {Object}   oFiles    Object of file paths to download to temp with file hashes as the key
      * @param {String}   sType     Binary or (?)
      * @param {String}   sExtension
@@ -1369,7 +1528,7 @@
         }
 
         var oTempFiles = {};
-        async.forEach(aDownloads, function (oFile, fCallbackAsync) {
+        async.eachLimit(aDownloads, this.oConfig.maxAsyncDownloads, function (oFile, fCallbackAsync) {
             this.toTemp(oFile.file, sType, oFile.hash, sExtension, function(oError, sTempFile) {
                 if (oError) {
                     fCallbackAsync(oError);
