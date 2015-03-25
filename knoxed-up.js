@@ -43,6 +43,11 @@
             this.sOriginalBucket = oConfig.bucket;
         }
 
+        if (oConfig.AMAZON.MAX_ASYNCHRONOUS_DOWNLOAD != undefined)
+            this.oConfig.maxAsyncDownloads = oConfig.AMAZON.MAX_ASYNCHRONOUS_DOWNLOAD;
+        else
+            this.oConfig.maxAsyncDownloads = 100;
+
         this.Client  = Knox.createClient(this.oConfig);
     };
 
@@ -279,7 +284,7 @@
     };
 
     KnoxedUp.prototype.getFile = function (sFilename, sToFile, sType, fCallback) {
-        syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType});
+        syslog.debug({action: 'KnoxedUp.getFile', file: sFilename, to: sToFile, type: sType, bucket: this.oConfig.bucket, originalBucket: this.sOriginalBucket});
 
         var sTimer      = syslog.timeStart('KnoxedUp.getFile');
         var bError      = false;
@@ -1523,7 +1528,7 @@
         }
 
         var oTempFiles = {};
-        async.forEach(aDownloads, function (oFile, fCallbackAsync) {
+        async.eachLimit(aDownloads, this.oConfig.maxAsyncDownloads, function (oFile, fCallbackAsync) {
             this.toTemp(oFile.file, sType, oFile.hash, sExtension, function(oError, sTempFile) {
                 if (oError) {
                     fCallbackAsync(oError);
